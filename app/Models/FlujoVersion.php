@@ -7,11 +7,35 @@ use Illuminate\Database\Eloquent\Attributes\Table;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property array<string, mixed> $contenido
+ * @property array<string, mixed>|null $layout
+ */
 // Laravel pluralizaría en inglés ("flujo_versions"); la tabla real es "flujo_versiones".
 #[Table('flujo_versiones')]
 #[Fillable(['numero', 'estado', 'contenido', 'layout', 'publicada_en'])]
 class FlujoVersion extends Model
 {
+    /**
+     * Contenido de un flujo recién creado: el mínimo que el bot entiende (start → end).
+     *
+     * @return array{FLUJO: array<string, array<string, string>>}
+     */
+    public static function contenidoInicial(): array
+    {
+        return [
+            'FLUJO' => [
+                'start' => [
+                    'message' => '¡Hola! Bienvenido.',
+                    'next_state' => 'end',
+                ],
+                'end' => [
+                    'message' => 'Gracias por escribirnos.',
+                ],
+            ],
+        ];
+    }
+
     /**
      * @return BelongsTo<Flujo, $this>
      */
@@ -28,8 +52,9 @@ class FlujoVersion extends Model
     protected function casts(): array
     {
         return [
-            'contenido' => 'array',
-            'layout' => 'array',
+            // Como 'array', pero guarda tildes, ñ y ¡ tal cual (no como á).
+            'contenido' => 'json:unicode',
+            'layout' => 'json:unicode',
             'publicada_en' => 'datetime',
         ];
     }
