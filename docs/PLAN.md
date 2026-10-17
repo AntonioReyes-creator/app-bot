@@ -25,7 +25,7 @@ app-bot (este servicio, Laravel 13)              proyecto existente (Laravel 8, 
 | Proyectos conectados | Por ahora **uno** (el principal). Si funciona, se suman los demás |
 | Comunicación | **Pull** para pruebas locales (el proyecto existente pide el JSON). **Push** al desplegar (el servicio envía al publicar) |
 | Versión de Laravel del proyecto existente | **No se actualiza** para esto (PHP 7.4 + Laravel 8, 38 mil líneas, 9 tests: proyecto aparte) |
-| Stack del servicio | Laravel 13.37 · PHP 8.3 · SQLite (local; MySQL al desplegar) · Bootstrap 5.3 · Drawflow 0.0.60 · Vite |
+| Stack del servicio | Laravel 13.37 · PHP 8.3 · MariaDB 10.4 local (XAMPP, base `app_bot`; antes SQLite) · Bootstrap 5.3 · Drawflow 0.0.60 · Vite |
 | Fuente de verdad | Se guarda el **JSON `FLUJO`** tal cual; las posiciones del lienzo van aparte (`layout`). Drawflow es solo la vista |
 | Git | Un commit local por paso/etapa. **Sin push** salvo que el usuario lo pida |
 
@@ -138,7 +138,7 @@ En ONPE hay dos estados casi iguales: `"Servicios - Información General"` y `"S
 
 - Endpoint en el proyecto existente que recibe el JSON, protegido con token propio.
 - "Publicar" en el servicio hace `POST`; si falla, la versión queda "pendiente de envío" con reintento.
-- Pasar de SQLite a MySQL (`.env`).
+- Base del servidor: local ya es MariaDB (`DB_CONNECTION=mariadb`). **Si producción usa MySQL 8**, su tipo `JSON` nativo reordena las claves (cambiaría el orden de las opciones del menú): comprobarlo y, si pasa, cambiar `contenido`/`layout` a `longText`. MariaDB no reordena (verificado).
 
 ## 7. Preguntas abiertas para el usuario
 

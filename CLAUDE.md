@@ -12,7 +12,7 @@ Al terminar cada paso, marca la casilla en el plan y actualiza la línea "Estado
 - Composer: `C:\tools\php83\php.exe C:\laragon\bin\composer\composer.phar ...`
 - Frontend: `npm run build` (o `npm run dev`). `.npmrc` tiene `ignore-scripts=true`: no quitarlo.
 - Servidor local: `C:\tools\php83\php.exe artisan serve` (usar `--port=8001` cuando corra junto al proyecto existente).
-- Base de datos local: SQLite (`database/database.sqlite`).
+- Base de datos local: **MariaDB 10.4 de XAMPP** (`127.0.0.1:3306`, `root` sin clave), base `app_bot`; se ve en HeidiSQL. No tocar las otras bases de ese servidor. Cliente: `C:\xampp\mysql\bin\mysql.exe`. (`database/database.sqlite` quedó en desuso.)
 
 ## Convenciones
 
