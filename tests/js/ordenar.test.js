@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { flujoADrawflow, tiposDeConexion } from '../../resources/js/flujo/flujo-a-drawflow.js';
+import { DISTANCIA_ATAJO, conexionesLejanas, flujoADrawflow, tiposDeConexion } from '../../resources/js/flujo/flujo-a-drawflow.js';
 import { ordenarArbol } from '../../resources/js/flujo/ordenar.js';
 
 // start → menu_a → (volver a start) ; start → menu_b ; tres estados van a end
@@ -13,7 +13,7 @@ const flujo = {
     suelto: { message: 'Sin conexión', next_state: 'end' },
 };
 
-test('tiposDeConexion: regreso, frecuente y línea', () => {
+test('tiposDeConexion (solo para Ordenar): regreso, frecuente y línea', () => {
     const tipos = tiposDeConexion(flujo);
 
     assert.deepEqual(tipos.start, ['linea', 'linea', 'frecuente']); // end recibe 4 conexiones
@@ -21,21 +21,38 @@ test('tiposDeConexion: regreso, frecuente y línea', () => {
     assert.deepEqual(tipos.menu_b, ['linea', 'frecuente']);
 });
 
-test('los atajos no dibujan línea y muestran una etiqueta que lleva al destino', () => {
-    const { datos, conexiones } = flujoADrawflow(flujo);
-    const caja = (n) => Object.values(datos.drawflow.Home.data).find((x) => x.name === n);
+// --- Dibujo: línea si las cajas están cerca, etiqueta si están lejos (DISTANCIA_ATAJO) ---
 
-    assert.deepEqual(conexiones, { lineas: 3, atajos: 5 });
-    assert.equal(caja('menu_a').outputs.output_1.connections.length, 0);
-    assert.match(caja('menu_a').html, /data-ir="start"/);
-    assert.match(caja('menu_a').html, /&#8617; start/);   // ↩ regreso
-    assert.match(caja('start').html, /&#8677; end/);      // ⇥ frecuente
-    assert.equal(caja('start').outputs.output_1.connections.length, 1, 'hacia adelante sí es línea');
+const caja = (datos, n) => Object.values(datos.drawflow.Home.data).find((x) => x.name === n);
+
+test('cajas cercanas: hacia adelante es línea (aunque el destino tenga muchas entradas); volver atrás es etiqueta ↩', () => {
+    // todo junto en pantalla: end (a la derecha) recibe 4 conexiones; menu_a vuelve a start (a la izquierda)
+    const cerca = { start: { x: 40, y: 40 }, menu_a: { x: 400, y: 40 }, menu_b: { x: 400, y: 260 }, hoja: { x: 760, y: 260 }, end: { x: 760, y: 40 }, suelto: { x: 760, y: 480 } };
+    const { datos, conexiones } = flujoADrawflow(flujo, cerca);
+
+    assert.deepEqual(conexiones, { lineas: 7, atajos: 1 });
+    assert.equal(caja(datos, 'menu_a').outputs.output_2.connections.length, 1, 'menu_a → end (adelante, cerca) = línea');
+    assert.equal(caja(datos, 'menu_a').outputs.output_1.connections.length, 0, 'volver a start = sin línea');
+    assert.match(caja(datos, 'menu_a').html, /data-ir="start"[^>]*>&#8617; start/);
+    assert.equal(caja(datos, 'suelto').outputs.output_1.connections.length, 1, 'misma columna (end arriba) no cuenta como "atrás"');
+    assert.doesNotMatch(caja(datos, 'start').html, /caja-atajo/);
 });
 
-test('con menos de 3 entradas el destino se sigue dibujando con línea', () => {
-    const { conexiones } = flujoADrawflow({ start: { message: 'a', next_state: 'end' }, end: { message: 'b' } });
-    assert.deepEqual(conexiones, { lineas: 1, atajos: 0 });
+test('cajas lejanas: etiqueta ↩ si el destino está a la izquierda y ⇢ si está a la derecha, sin línea', () => {
+    const lejos = { start: { x: 40, y: 40 }, menu_a: { x: 400, y: 3000 }, menu_b: { x: 400, y: 260 }, hoja: { x: 760, y: 260 }, end: { x: 2400, y: 40 }, suelto: { x: 760, y: 480 } };
+    const { datos } = flujoADrawflow(flujo, lejos);
+
+    assert.equal(caja(datos, 'start').outputs.output_1.connections.length, 0, 'menu_a está 3000 px abajo');
+    assert.match(caja(datos, 'start').html, /data-ir="menu_a"[^>]*>&#8674; menu_a/);   // ⇢ a la derecha
+    assert.match(caja(datos, 'menu_a').html, /data-ir="start"[^>]*>&#8617; start/);    // ↩ a la izquierda
+    assert.equal(caja(datos, 'start').outputs.output_2.connections.length, 1, 'menu_b está cerca');
+});
+
+test('el límite es DISTANCIA_ATAJO entre centros de caja', () => {
+    const f = { start: { message: 'a', next_state: 'end' }, end: { message: 'b' } };
+
+    assert.deepEqual(conexionesLejanas(f, { start: { x: 0, y: 0 }, end: { x: 0, y: DISTANCIA_ATAJO } }).start, ['linea']);
+    assert.deepEqual(conexionesLejanas(f, { start: { x: 0, y: 0 }, end: { x: 0, y: DISTANCIA_ATAJO + 1 } }).start, ['lejos-adelante']);
 });
 
 test('ordenarArbol: hijos a la derecha del padre y sin cajas encimadas en una misma columna', () => {

@@ -42,9 +42,20 @@ class FlujoTest extends TestCase
     public function test_el_contenido_se_guarda_sin_escapar_tildes(): void
     {
         $this->post('/flujos', ['nombre' => 'Atención']);
+        $this->putJson('/flujos/atencion/borrador', ['contenido' => ['FLUJO' => ['start' => ['message' => '¡Hola! Atención 👋']]]]);
 
         $crudo = DB::table('flujo_versiones')->value('contenido');
-        $this->assertStringContainsString('¡Hola! Bienvenido.', $crudo);
+        $this->assertStringContainsString('¡Hola! Atención 👋', $crudo);
+    }
+
+    public function test_el_flujo_nuevo_nace_con_los_mensajes_vacios(): void
+    {
+        $this->post('/flujos', ['nombre' => 'Nuevo']);
+
+        $this->assertSame(
+            ['start' => ['message' => '', 'next_state' => 'end'], 'end' => ['message' => '']],
+            Flujo::sole()->ultimaVersion->contenido['FLUJO'],
+        );
     }
 
     public function test_nombre_vacio_muestra_error_en_espanol(): void
@@ -160,5 +171,36 @@ class FlujoTest extends TestCase
     public function test_guardar_flujo_inexistente_da_404(): void
     {
         $this->putJson('/flujos/no-existe/borrador', ['contenido' => ['FLUJO' => ['start' => ['message' => 'x']]]])->assertNotFound();
+    }
+
+    // --- Eliminar flujo (DELETE /flujos/{slug}) ---
+
+    public function test_eliminar_borra_el_flujo_y_sus_versiones(): void
+    {
+        $flujo = $this->flujoCreado();
+        $flujo->versiones()->create(['numero' => 2, 'contenido' => ['FLUJO' => ['start' => ['message' => '']]]]);
+        $this->post('/flujos', ['nombre' => 'Otro']);
+
+        $this->delete('/flujos/poder-judicial')
+            ->assertRedirect('/flujos')
+            ->assertSessionHas('estado', 'Flujo «Poder Judicial» eliminado.');
+
+        $this->assertSame(['otro'], Flujo::pluck('slug')->all(), 'el otro flujo no se toca');
+        $this->assertSame(0, DB::table('flujo_versiones')->where('flujo_id', $flujo->id)->count(), 'versiones borradas en cascada');
+    }
+
+    public function test_la_lista_tiene_el_boton_eliminar_con_confirmacion(): void
+    {
+        $this->flujoCreado();
+
+        $this->get('/flujos')
+            ->assertSee('action="' . route('flujos.destroy', 'poder-judicial') . '"', false)
+            ->assertSee('name="_method" value="DELETE"', false)
+            ->assertSee('Eliminar el flujo', false);
+    }
+
+    public function test_eliminar_flujo_inexistente_da_404(): void
+    {
+        $this->delete('/flujos/no-existe')->assertNotFound();
     }
 }

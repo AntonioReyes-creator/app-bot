@@ -32,8 +32,15 @@
                         <td><code>{{ $flujo->slug }}</code></td>
                         <td class="text-center">{{ $flujo->versiones_count }}</td>
                         <td>{{ $flujo->created_at->format('d/m/Y H:i') }}</td>
-                        <td class="text-end">
+                        <td class="text-end text-nowrap">
                             <a href="{{ route('flujos.edit', $flujo) }}" class="btn btn-sm btn-outline-primary">Editar</a>
+                            {{-- Borrar es definitivo (también sus versiones): se pide confirmación. --}}
+                            <form method="POST" action="{{ route('flujos.destroy', $flujo) }}" class="d-inline"
+                                  onsubmit="return confirm(@js('¿Eliminar el flujo «' . $flujo->nombre . '» y todas sus versiones? No se puede deshacer.'))">
+                                @csrf
+                                @method('DELETE')
+                                <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+                            </form>
                         </td>
                     </tr>
                 @endforeach

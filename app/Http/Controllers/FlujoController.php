@@ -114,6 +114,17 @@ class FlujoController extends Controller
     }
 
     /**
+     * Elimina el flujo. Sus versiones se borran solas: la clave foránea tiene ON DELETE CASCADE.
+     */
+    public function destroy(Flujo $flujo): RedirectResponse
+    {
+        $flujo->delete();
+
+        return redirect()->route('flujos.index')
+            ->with('estado', "Flujo «{$flujo->nombre}» eliminado.");
+    }
+
+    /**
      * "Poder Judicial" → "poder-judicial"; si ya existe, "poder-judicial-2", "-3"…
      */
     private function slugUnico(string $nombre): string

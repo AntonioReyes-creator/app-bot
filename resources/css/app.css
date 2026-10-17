@@ -10,6 +10,7 @@
     border: 1px solid #dee2e6;
     border-radius: .375rem;
 }
+.lienzo > #lienzo { width: 100%; height: 100%; }
 
 /* Cajas del editor (las genera resources/js/flujo/flujo-a-drawflow.js). */
 .drawflow .drawflow-node {
@@ -62,3 +63,30 @@
 
 /* Caja a la que se llegó con un atajo: se resalta un momento. */
 .drawflow .drawflow-node.resaltada { box-shadow: 0 0 0 4px rgba(13, 110, 253, .45); transition: box-shadow .2s; }
+
+/* Controles de zoom flotando en la esquina inferior derecha del lienzo. */
+.lienzo { position: relative; }
+.controles-zoom { position: absolute; right: 12px; bottom: 12px; z-index: 5; }
+.controles-zoom #zoom-nivel { min-width: 4.2rem; }
+/* Drawflow escala el lienzo desde su centro; desde la esquina, zoom y encuadre (editor.js) cuadran exactos. */
+#lienzo > .drawflow { transform-origin: 0 0; }
+
+/* Textos aún sin escribir y nombre amigable de los estados básicos (Inicio, Fin, Pasar a un asesor). */
+.caja-vacio { color: #adb5bd; font-style: italic; }
+.caja-etiqueta { font-size: .7rem; color: #6c757d; background: #e9ecef; border-radius: .25rem; padding: 0 .3rem; }
+
+/* Editor de mensajes: selector de emojis y vista previa con el aspecto de WhatsApp. */
+.selector-emojis { width: 22rem; max-height: 18rem; overflow-y: auto; }
+.selector-emojis-grupo { font-size: .7rem; color: #6c757d; text-transform: uppercase; margin: .35rem 0 .15rem; }
+.selector-emojis-fila { display: flex; flex-wrap: wrap; gap: .15rem; }
+.selector-emojis-fila .btn { font-size: 1.15rem; line-height: 1; padding: .3rem .35rem; }
+
+.vista-whatsapp { border-radius: .5rem; overflow: hidden; border: 1px solid #d1d7db; position: sticky; top: 0; }
+.vista-whatsapp-cabecera { background: #008069; color: #fff; padding: .5rem .75rem; font-size: .85rem; font-weight: 600; }
+.vista-whatsapp-chat { background: #efeae2; padding: 1rem .75rem; min-height: 14rem; }
+.vista-whatsapp-burbuja { background: #fff; border-radius: 0 .5rem .5rem .5rem; padding: .4rem .6rem; max-width: 92%;
+    font-size: .9rem; line-height: 1.35; overflow-wrap: anywhere; box-shadow: 0 1px .5px rgba(11, 20, 26, .13); }
+.vista-whatsapp-burbuja code { color: inherit; background: #f0f2f5; padding: 0 .2rem; border-radius: .2rem; }
+.vista-whatsapp-burbuja code.wa-bloque { display: block; white-space: pre-wrap; padding: .25rem .4rem; }
+.vista-whatsapp-burbuja .wa-cita { display: inline-block; border-left: 3px solid #b0b3b5; padding-left: .5rem; color: #54656f; }
+.vista-whatsapp-burbuja .wa-vineta { color: #54656f; }

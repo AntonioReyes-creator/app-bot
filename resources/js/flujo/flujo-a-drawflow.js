@@ -1,4 +1,4 @@
-import { esEstadoSistema } from './estados-sistema.js';
+import { esEstadoSistema, etiquetaSistema } from './estados-sistema.js';
 
 // Traductor FLUJO → formato de importación de Drawflow. Módulo puro (sin DOM) para poder probarlo.
 //
@@ -83,16 +83,43 @@ export function calcularPosiciones(flujo, layout = {}) {
     return posiciones;
 }
 
-/** Un destino que recibe estas conexiones o más se muestra como atajo en vez de con líneas. */
+/** Un destino que recibe estas conexiones o más se considera "muy usado" al ordenar (ordenar.js). */
 export const MINIMO_FRECUENTE = 3;
 
+/** Más allá de esta distancia entre los centros de dos cajas (px del lienzo), la conexión va como etiqueta. */
+export const DISTANCIA_ATAJO = 1000;
+
+/** Si el destino empieza más de esto a la izquierda del origen, la conexión "vuelve atrás". */
+const MARGEN_ATRAS = 100;
+
 /**
- * Cómo se dibuja cada conexión, para no llenar el lienzo de líneas largas. Devuelve
- * { nombre: ['linea' | 'regreso' | 'frecuente' | null, …] } en el orden de salidas() (null = sin destino válido).
+ * Cómo se DIBUJA cada conexión, según dónde están las cajas en el lienzo. Devuelve
+ * { nombre: ['linea' | 'lejos-atras' | 'lejos-adelante' | null, …] } en el orden de salidas()
+ * (null = sin destino válido):
+ *  - destino a la izquierda (volver atrás, ej. "volver al menú") → etiqueta ↩, aunque esté cerca:
+ *    esa línea tendría que dar la vuelta por detrás de las cajas.
+ *  - destino adelante y cerca → línea.
+ *  - destino adelante y lejos (más de DISTANCIA_ATAJO entre centros) → etiqueta ⇢.
+ * Es solo visual: el FLUJO no cambia.
+ */
+export function conexionesLejanas(flujo, posiciones) {
+    return Object.fromEntries(Object.entries(flujo).map(([nombre, estado]) => [nombre, salidas(estado).map(({ destino }) => {
+        if (destino == null || !(destino in flujo)) return null;
+        const a = posiciones[nombre];
+        const b = posiciones[destino];
+        if (b.x < a.x - MARGEN_ATRAS) return 'lejos-atras';
+        if (Math.hypot(b.x - a.x, b.y - a.y) > DISTANCIA_ATAJO) return 'lejos-adelante';
+        return 'linea';
+    })]));
+}
+
+/**
+ * Estructura del flujo para el botón Ordenar (ordenar.js): qué conexiones forman el árbol. Devuelve
+ * { nombre: ['linea' | 'regreso' | 'frecuente' | null, …] } en el orden de salidas().
  *  - regreso: el destino está a la misma distancia de start o menos (ej. "volver al menú"). Una conexión
  *    "hacia adelante" en el recorrido en anchura siempre va de la distancia d a la d+1.
  *  - frecuente: el destino recibe MINIMO_FRECUENTE conexiones o más (ej. end).
- * Es solo visual: el FLUJO no cambia.
+ * No decide qué se dibuja (eso es conexionesLejanas).
  */
 export function tiposDeConexion(flujo) {
     const distancia = distancias(flujo);
@@ -123,7 +150,7 @@ export function flujoADrawflow(flujo, layout = {}) {
     const idDe = new Map(nombres.map((nombre, i) => [nombre, String(i + 1)]));
     const posiciones = calcularPosiciones(flujo, layout);
     const alcanzables = distancias(flujo);
-    const tipos = tiposDeConexion(flujo);
+    const tipos = conexionesLejanas(flujo, posiciones);
     const conexiones = { lineas: 0, atajos: 0 };
     const nodos = {};
 
@@ -186,15 +213,13 @@ function htmlCaja(nombre, estado, tipo, sistema, lista, flujo, tiposSalida = [])
     const filas = lista.map(({ clave, texto, destino, oculta }, i) => {
         const sinConectar = destino == null;
         const roto = !sinConectar && !(destino in flujo);
-        const etiqueta = clave === null ? '<span class="caja-clave">sigue</span>' : `<span class="caja-clave">${escapar(clave)}</span> ${escapar(texto)}`;
-        const atajo = tiposSalida[i] === 'regreso' || tiposSalida[i] === 'frecuente';
+        const textoHtml = texto ? escapar(texto) : '<span class="caja-vacio">(sin texto)</span>';
+        const etiqueta = clave === null ? '<span class="caja-clave">sigue</span>' : `<span class="caja-clave">${escapar(clave)}</span> ${textoHtml}`;
         let destinoHtml = sinConectar ? 'sin conectar' : `&rarr; ${escapar(destino)}${roto ? ' &#9888; no existe' : ''}`;
-        if (atajo) {
-            // Etiqueta en vez de línea; clic = ir a ese estado. ↩ vuelve atrás, ⇥ destino muy usado.
-            const [simbolo, ayuda] = tiposSalida[i] === 'regreso'
-                ? ['&#8617;', 'Vuelve a un estado anterior']
-                : ['&#8677;', 'Destino muy usado'];
-            destinoHtml = `<button type="button" class="caja-atajo" data-ir="${escapar(destino)}" title="${ayuda}: clic para ir a «${escapar(destino)}»">${simbolo} ${escapar(destino)}</button>`;
+        if (tiposSalida[i] === 'lejos-atras' || tiposSalida[i] === 'lejos-adelante') {
+            // Caja lejana: etiqueta en vez de línea; clic = ir a ese estado. ↩ está a la izquierda, ⇢ a la derecha.
+            const simbolo = tiposSalida[i] === 'lejos-atras' ? '&#8617;' : '&#8674;';
+            destinoHtml = `<button type="button" class="caja-atajo" data-ir="${escapar(destino)}" title="Está lejos en el lienzo: clic para ir a «${escapar(destino)}»">${simbolo} ${escapar(destino)}</button>`;
         }
         // data-salida: editor.js coloca la bolita nº i a la altura de esta fila.
         return `<li data-salida="${i}" class="${oculta ? 'opcion-oculta' : ''}${roto ? ' destino-roto' : ''}${sinConectar ? ' destino-pendiente' : ''}">`
@@ -203,9 +228,11 @@ function htmlCaja(nombre, estado, tipo, sistema, lista, flujo, tiposSalida = [])
     });
 
     return `<div class="caja">`
-        + `<div class="caja-cabecera"><span class="caja-nombre">${escapar(nombre)}</span>${candado}<span class="caja-tipo">${ETIQUETAS[tipo]}</span>`
+        + `<div class="caja-cabecera"><span class="caja-nombre">${escapar(nombre)}</span>${candado}`
+        + (etiquetaSistema(nombre) ? `<span class="caja-etiqueta">${etiquetaSistema(nombre)}</span>` : '')
+        + `<span class="caja-tipo">${ETIQUETAS[tipo]}</span>`
         + `<button type="button" class="caja-editar" data-editar title="Editar (o doble clic en la caja)">&#9998;</button></div>`
-        + `<div class="caja-mensaje">${escapar(estado.message ?? '')}</div>`
+        + `<div class="caja-mensaje">${estado.message ? escapar(estado.message) : '<span class="caja-vacio">(sin mensaje)</span>'}</div>`
         + (filas.length ? `<ul class="caja-salidas">${filas.join('')}</ul>` : '')
         + `</div>`;
 }

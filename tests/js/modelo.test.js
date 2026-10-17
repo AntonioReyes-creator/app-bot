@@ -1,10 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    agregarEstado, aplicarEdicion, crearConectado, eliminarEstado, fijarDestino, moverEstado, opcionesDe,
-    plantilla, plantillaSistema, siguienteClave, sistemaDisponibles, sugerirNombre, validarNombre,
+    agregarEstado, aplicarEdicion, crearConectado, eliminarEstado, enlazarPareja, fijarDestino, moverEstado, opcionesDe,
+    nombreDesdeTexto, nombrePatron, plantilla, plantillaSistema, siguienteClave, sistemaDisponibles, sugerirNombre, validarNombre,
 } from '../../resources/js/flujo/modelo.js';
 import { clasificar, flujoADrawflow } from '../../resources/js/flujo/flujo-a-drawflow.js';
+import { NOMBRES, describirSistema } from '../../resources/js/flujo/estados-sistema.js';
 
 const modeloInicial = () => ({
     flujo: { start: { message: 'Hola', next_state: 'end' }, end: { message: 'Fin' } },
@@ -82,15 +83,27 @@ test('start no se puede borrar', () => {
     assert.ok('start' in modelo.flujo);
 });
 
-test('estados del sistema: solo se ofrecen los que faltan, con su estructura', () => {
-    const disponibles = sistemaDisponibles(modeloInicial().flujo);
+test('estados del sistema: básicos por defecto, avanzados aparte; solo los que faltan', () => {
+    const flujo = modeloInicial().flujo; // start y end
 
-    assert.ok(!disponibles.includes('start'));
-    assert.ok(!disponibles.includes('end'));
-    assert.ok(disponibles.includes('end_or_menu'));
+    assert.deepEqual(sistemaDisponibles(flujo), ['esperando_agente']);
+    assert.ok(sistemaDisponibles(flujo, { avanzados: true }).includes('end_or_menu'));
+    assert.ok(!sistemaDisponibles(flujo, { avanzados: true }).includes('esperando_agente'));
+});
+
+test('plantillas: estructura del motor y mensajes vacíos (nada inventado)', () => {
     assert.equal(clasificar(plantillaSistema('end_or_menu')), 'menu');
-    assert.equal(plantillaSistema('mas_informacion').next_state, 'esperando_agente');
+    assert.equal(plantillaSistema('mas_informacion', { esperando_agente: {} }).next_state, 'esperando_agente');
+    assert.equal(plantillaSistema('mas_informacion', {}).next_state, null, 'sin esperando_agente: sin conectar');
     assert.equal(clasificar(plantillaSistema('verificacion_numero')), 'final');
+
+    for (const nombre of ['start', 'end', 'esperando_agente', 'end_or_menu', 'mas_informacion', 'encuesta_inicio', 'derivar_x', 'x_confirmar']) {
+        const estado = plantillaSistema(nombre);
+        assert.equal(estado.message, '', `${nombre}: mensaje vacío`);
+        for (const opcion of Object.values(estado.options ?? {})) assert.equal(opcion.text, '', `${nombre}: opción sin texto`);
+    }
+    for (const tipo of ['menu', 'paso', 'final']) assert.equal(plantilla(tipo).message, '');
+    assert.equal(plantillaSistema('x_pedir_corte').message, '{{departamentos}}', 'marca funcional del motor, no texto inventado');
 });
 
 test('nombrePorId relaciona los ids de Drawflow con los nombres', () => {
@@ -198,18 +211,35 @@ test('fijarDestino conecta y desconecta opciones y "sigue" según su posición',
     assert.equal(modelo.flujo.tramites.next_state, 'start');
 });
 
-test('crearConectado: caja nueva con nombre automático, a la derecha y ya conectada', () => {
-    const modelo = conMenu();
+test('crearConectado: la caja nueva se llama como el texto de la opción, a la derecha y ya conectada', () => {
+    const modelo = conMenu();                                           // start: 1 "Trámites", 2 "Salir"
     const nombre = crearConectado(modelo, 'start', 1, { tipo: 'menu' });
 
-    assert.equal(nombre, 'menu_1');
-    assert.equal(modelo.flujo.start.options['2'].next_state, 'menu_1');
-    assert.equal(clasificar(modelo.flujo.menu_1), 'menu');
-    assert.ok(modelo.layout.menu_1.x > modelo.layout.start.x);
+    assert.equal(nombre, 'salir');
+    assert.equal(modelo.flujo.start.options['2'].next_state, 'salir');
+    assert.equal(clasificar(modelo.flujo.salir), 'menu');
+    assert.ok(modelo.layout.salir.x > modelo.layout.start.x);
 
-    assert.equal(crearConectado(modelo, 'start', 0, { tipo: 'menu' }), 'menu_2');
+    assert.equal(crearConectado(modelo, 'start', 0, { tipo: 'paso' }), 'tramites_2', '"tramites" ya existe');
     assert.equal(crearConectado(modelo, 'tramites', 0, { sistema: 'end_or_menu' }), 'end_or_menu');
     assert.equal(modelo.flujo.tramites.next_state, 'end_or_menu');
+});
+
+test('crearConectado: sin texto (opción vacía o «sigue») usa el tipo numerado', () => {
+    const modelo = { flujo: { start: { message: 'x', options: { 1: { text: '', next_state: null } } }, paso: { message: 'y', next_state: null } }, layout: {} };
+
+    assert.equal(crearConectado(modelo, 'start', 0, { tipo: 'menu' }), 'menu_1');
+    assert.equal(crearConectado(modelo, 'paso', 0, { tipo: 'final' }), 'final_1');
+});
+
+test('nombreDesdeTexto: snake_case sin tildes ni signos, empezando por letra', () => {
+    assert.equal(nombreDesdeTexto('Opción 1'), 'opcion_1');
+    assert.equal(nombreDesdeTexto('¿Trámites en línea?'), 'tramites_en_linea');
+    assert.equal(nombreDesdeTexto('Ñandú  -  Señal'), 'nandu_senal');
+    assert.equal(nombreDesdeTexto('1. Demandas o escritos'), 'op_1_demandas_o_escritos');
+    assert.equal(nombreDesdeTexto('  ¿?  '), '');
+    assert.ok(nombreDesdeTexto('a'.repeat(60)).length <= 40);
+    assert.equal(validarNombre({}, nombreDesdeTexto('Opción 1')), null, 'cumple el formato de nombres');
 });
 
 test('el error de edición indica qué campo marcar en rojo', () => {
@@ -224,4 +254,56 @@ test('el error de edición indica qué campo marcar en rojo', () => {
             opciones: [{ clave: '1', text: 'a', extra: {} }, { clave: '2', text: 'b', extra: {} }, { clave: '1', text: 'c', extra: {} }] }),
         { campo: 'clave', indice: 2, mensaje: 'La opción «1» está repetida.' },
     );
+});
+
+// --- Estados del sistema por patrón ---
+
+test('plantillaSistema por patrón: forma del flujo PJ y se conecta con su pareja si existe', () => {
+    const vacio = {};
+    assert.equal(clasificar(plantillaSistema('deposito_pedir_corte', vacio)), 'paso');
+    assert.equal(plantillaSistema('deposito_pedir_corte', vacio).next_state, null, 'sin pareja: sin conectar');
+    assert.match(plantillaSistema('deposito_pedir_corte', vacio).message, /\{\{departamentos\}\}/);
+
+    const conPareja = { deposito_pedir_corte: {}, deposito_confirmar: {}, mas_informacion: {} };
+    assert.equal(plantillaSistema('deposito_pedir_corte', conPareja).next_state, 'deposito_confirmar');
+    assert.equal(plantillaSistema('deposito_confirmar', conPareja).options['2'].next_state, 'deposito_pedir_corte');
+    assert.equal(plantillaSistema('derivar_quejas', conPareja).next_state, 'mas_informacion');
+    assert.equal(clasificar(plantillaSistema('esperando_agente_quejas', vacio)), 'final');
+});
+
+test('nombrePatron arma y valida el nombre: prefijo/sufijo + parte en snake_case', () => {
+    const derivar = { antes: 'derivar_', despues: '' };
+    const pedir = { antes: '', despues: '_pedir_corte' };
+
+    assert.deepEqual(nombrePatron({}, derivar, 'quejas'), { nombre: 'derivar_quejas', error: null });
+    assert.deepEqual(nombrePatron({}, pedir, 'deposito'), { nombre: 'deposito_pedir_corte', error: null });
+    assert.match(nombrePatron({}, derivar, '').error, /parte variable/);
+    assert.match(nombrePatron({}, derivar, 'Quejas Varias').error, /minúsculas/);
+    assert.match(nombrePatron({ derivar_quejas: {} }, derivar, 'quejas').error, /Ya existe/);
+});
+
+test('describirSistema: fijos y por patrón; null si no es del sistema', () => {
+    assert.match(describirSistema('end_or_menu'), /algo más/);
+    assert.match(describirSistema('derivar_notificaciones'), /asesor/);
+    assert.match(describirSistema('deposito_pedir_corte'), /jurisdicción/);
+    assert.match(describirSistema('esperando_agente_quejas'), /asesor/);
+    assert.equal(describirSistema('menu_tramites'), null);
+    for (const nombre of NOMBRES) assert.ok(describirSistema(nombre), `falta la descripción de ${nombre}`);
+});
+
+test('enlazarPareja: al añadir la segunda de la pareja se completa la primera (sin pisar conexiones)', () => {
+    const modelo = { flujo: {}, layout: {} };
+    agregarEstado(modelo, 'deposito_pedir_corte', plantillaSistema('deposito_pedir_corte', modelo.flujo), { x: 0, y: 0 });
+    agregarEstado(modelo, 'deposito_confirmar', plantillaSistema('deposito_confirmar', modelo.flujo), { x: 400, y: 0 });
+    enlazarPareja(modelo, 'deposito_confirmar');
+
+    assert.equal(modelo.flujo.deposito_pedir_corte.next_state, 'deposito_confirmar');
+    assert.equal(modelo.flujo.deposito_confirmar.options['2'].next_state, 'deposito_pedir_corte');
+
+    const otro = { flujo: { a_confirmar: plantillaSistema('a_confirmar', {}) }, layout: {} };
+    otro.flujo.a_confirmar.options['2'].next_state = 'start';            // ya conectado a mano
+    otro.flujo.a_pedir_corte = plantillaSistema('a_pedir_corte', otro.flujo);
+    enlazarPareja(otro, 'a_pedir_corte');
+    assert.equal(otro.flujo.a_confirmar.options['2'].next_state, 'start', 'no pisa lo que ya estaba conectado');
+    assert.equal(otro.flujo.a_pedir_corte.next_state, 'a_confirmar');
 });

@@ -10,3 +10,4 @@ Route::get('/flujos/crear', [FlujoController::class, 'create'])->name('flujos.cr
 Route::post('/flujos', [FlujoController::class, 'store'])->name('flujos.store');
 Route::get('/flujos/{flujo:slug}/editar', [FlujoController::class, 'edit'])->name('flujos.edit');
 Route::put('/flujos/{flujo:slug}/borrador', [FlujoController::class, 'guardar'])->name('flujos.guardar');
+Route::delete('/flujos/{flujo:slug}', [FlujoController::class, 'destroy'])->name('flujos.destroy');

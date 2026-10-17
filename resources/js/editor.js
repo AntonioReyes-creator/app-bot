@@ -1,11 +1,12 @@
 import Drawflow from 'drawflow';
 import { Modal } from 'bootstrap';
-import { calcularPosiciones, clasificar, flujoADrawflow, salidas } from './flujo/flujo-a-drawflow.js';
-import { esEstadoSistema } from './flujo/estados-sistema.js';
+import { calcularPosiciones, clasificar, conexionesLejanas, flujoADrawflow, salidas } from './flujo/flujo-a-drawflow.js';
+import { AVANZADOS, BASICOS, PATRONES_SISTEMA, describirSistema, esEstadoSistema, etiquetaSistema } from './flujo/estados-sistema.js';
 import { ordenarArbol } from './flujo/ordenar.js';
+import { EMOJIS, MAXIMO_CARACTERES, envolver, formatearWhatsApp, insertar, marcarLineas, mensajeDelBot } from './flujo/whatsapp.js';
 import {
-    agregarEstado, aplicarEdicion, crearConectado, eliminarEstado, fijarDestino, moverEstado, opcionesDe,
-    plantilla, plantillaSistema, siguienteClave, sistemaDisponibles, sugerirNombre, validarNombre,
+    agregarEstado, aplicarEdicion, crearConectado, eliminarEstado, enlazarPareja, fijarDestino, moverEstado, nombrePatron,
+    ejemploMensaje, opcionesDe, plantillaSistema, siguienteClave, sistemaDisponibles, validarNombre,
 } from './flujo/modelo.js';
 
 // Página del editor (flujos/edit.blade.php).
@@ -35,7 +36,6 @@ if (contenedor) {
         if (sinConexion > 0) texto += ` · ${sinConexion} sin conexión`;
         document.getElementById('resumen').textContent = texto;
 
-        llenarMenuSistema();
     }
 
     /**
@@ -116,17 +116,23 @@ if (contenedor) {
         };
     }
 
-    function agregar(nombre, estado) {
-        agregarEstado(modelo, nombre, estado, centroVisible());
-        marcarCambios();
-        dibujar();
-    }
-
     // --- Mover: Drawflow ya movió la caja; solo se anota la posición en el modelo.
+    // Si al mover una caja alguna conexión pasa de "cerca" a "lejos" (o al revés), se redibuja para cambiar
+    // línea ↔ etiqueta. Si no cambia nada, no se redibuja (así no se pierde la caja seleccionada).
+    // Drawflow solo escucha "soltar el ratón" dentro del lienzo: si se suelta una caja fuera (sobre la barra,
+    // el borde…), el arrastre quedaba pendiente y nodeMoved llegaba tarde y con otra posición. Se le reenvía.
+    document.addEventListener('mouseup', (evento) => {
+        if (!contenedor.contains(evento.target) && (editor.drag || editor.editor_selected)) editor.dragEnd(evento);
+    });
+
     editor.on('nodeMoved', (id) => {
-        const nodo = editor.getNodeFromId(id);
-        moverEstado(modelo, nombrePorId.get(String(id)), nodo.pos_x, nodo.pos_y);
+        const antes = JSON.stringify(conexionesLejanas(modelo.flujo, modelo.layout));
+        // Se lee la posición de la caja en pantalla: Drawflow guarda en sus datos (pos_x/pos_y) la posición
+        // con un paso de más (resta el desplazamiento dos veces al mover), y la caja "saltaba" al reabrir.
+        const caja = document.getElementById('node-' + id);
+        moverEstado(modelo, nombrePorId.get(String(id)), parseFloat(caja.style.left), parseFloat(caja.style.top));
         marcarCambios();
+        if (JSON.stringify(conexionesLejanas(modelo.flujo, modelo.layout)) !== antes) dibujar();
     });
 
     // --- Borrar: Drawflow ya quitó la caja; se quita también del modelo. start no se borra:
@@ -197,10 +203,10 @@ if (contenedor) {
             item('+ Nuevo final', () => crearConectado(modelo, nombre, indice, { tipo: 'final' })),
         ];
 
-        const sistema = sistemaDisponibles(modelo.flujo);
+        const sistema = sistemaDisponibles(modelo.flujo); // solo los básicos que faltan (Fin, Pasar a un asesor)
         if (sistema.length) {
             partes.push(separador(), titulo('Nuevo estado del sistema'));
-            sistema.forEach((s) => partes.push(item(s, () => crearConectado(modelo, nombre, indice, { sistema: s }), 'font-monospace')));
+            sistema.forEach((s) => partes.push(item(`+ ${etiquetaSistema(s) ?? s} (${s})`, () => crearConectado(modelo, nombre, indice, { sistema: s }))));
         }
 
         partes.push(separador(), titulo('Conectar con uno existente'));
@@ -236,6 +242,48 @@ if (contenedor) {
         editor.precanvas.style.transform = `translate(${x}px, ${y}px) scale(${editor.zoom})`;
     }
 
+    // --- Zoom. Drawflow amplía respecto a la esquina; aquí se amplía respecto al centro de la vista.
+    editor.zoom_min = 0.05; // por defecto 0.5: muy poco para ver entero un flujo grande (PJ mide ~10.000 px de alto)
+    const etiquetaZoom = document.getElementById('zoom-nivel');
+    const mostrarZoom = () => { etiquetaZoom.textContent = `${Math.round(editor.zoom * 100)}%`; };
+    editor.on('zoom', mostrarZoom); // también Ctrl+rueda
+
+    function fijarZoom(zoom, cx = contenedor.clientWidth / 2, cy = contenedor.clientHeight / 2) {
+        const nuevo = Math.min(editor.zoom_max, Math.max(editor.zoom_min, Math.round(zoom * 100) / 100));
+        // Punto del flujo que está en (cx, cy): debe seguir ahí después de cambiar el zoom.
+        const fx = (cx - editor.canvas_x) / editor.zoom;
+        const fy = (cy - editor.canvas_y) / editor.zoom;
+        editor.zoom = nuevo;
+        editor.zoom_last_value = nuevo; // Drawflow lo usa al hacer zoom con la rueda
+        moverVista(cx - fx * nuevo, cy - fy * nuevo);
+        mostrarZoom();
+    }
+
+    /** Encuadra todo el flujo: zoom para que quepa (sin pasar del 100 %) y centrado en la vista. */
+    function ajustarVista() {
+        const cajas = [...contenedor.querySelectorAll('.drawflow-node')];
+        if (!cajas.length) return;
+        const izquierda = Math.min(...cajas.map((c) => c.offsetLeft));
+        const arriba = Math.min(...cajas.map((c) => c.offsetTop));
+        const ancho = Math.max(...cajas.map((c) => c.offsetLeft + c.offsetWidth)) - izquierda;
+        const alto = Math.max(...cajas.map((c) => c.offsetTop + c.offsetHeight)) - arriba;
+        const margen = 40;
+
+        const zoom = Math.min(1, (contenedor.clientWidth - margen * 2) / ancho, (contenedor.clientHeight - margen * 2) / alto);
+        editor.zoom = Math.max(editor.zoom_min, Math.round(zoom * 100) / 100);
+        editor.zoom_last_value = editor.zoom;
+        moverVista(
+            contenedor.clientWidth / 2 - (izquierda + ancho / 2) * editor.zoom,
+            contenedor.clientHeight / 2 - (arriba + alto / 2) * editor.zoom,
+        );
+        mostrarZoom();
+    }
+
+    document.getElementById('zoom-mas').addEventListener('click', () => fijarZoom(editor.zoom + 0.1));
+    document.getElementById('zoom-menos').addEventListener('click', () => fijarZoom(editor.zoom - 0.1));
+    document.getElementById('zoom-nivel').addEventListener('click', () => fijarZoom(1));
+    document.getElementById('zoom-ajustar').addEventListener('click', ajustarVista);
+
     // --- Atajos: clic en la etiqueta ↩/⇥ de una fila → centrar la vista en ese estado y resaltarlo.
     contenedor.addEventListener('click', (evento) => {
         const atajo = evento.target.closest('[data-ir]');
@@ -266,68 +314,125 @@ if (contenedor) {
 
         modelo.layout = ordenarArbol(modelo.flujo, alturas);
         dibujar();
-        irA('start', false);
     }
 
     document.getElementById('ordenar').addEventListener('click', () => {
         ordenar();
+        ajustarVista(); // todo el flujo encuadrado y centrado, no pegado a una esquina
         marcarCambios();
     });
 
     /** Mensaje breve junto a la barra de herramientas (no bloquea como alert). */
     let temporizadorAviso;
-    function avisar(texto) {
+    function avisar(texto, tipo = 'danger') {
         const aviso = document.getElementById('aviso');
         aviso.textContent = texto;
-        aviso.classList.remove('d-none');
+        aviso.className = `badge text-bg-${tipo}`;
         clearTimeout(temporizadorAviso);
         temporizadorAviso = setTimeout(() => aviso.classList.add('d-none'), 4000);
     }
 
-    // --- Añadir menú, paso o final: pide el nombre en el modal.
-    const modal = new Modal(document.getElementById('modal-nombre'));
-    const campo = document.getElementById('campo-nombre');
-    let tipoPendiente = null;
+    // --- Panel "Estados del sistema": los que hay en el flujo (ir, editar, quitar) y los que se pueden añadir.
+    const modalSistema = new Modal(document.getElementById('modal-sistema'));
+    const formPatron = document.getElementById('form-patron');
+    const tipoPatron = document.getElementById('patron-tipo');
+    const partePatron = document.getElementById('patron-parte');
 
-    document.querySelectorAll('[data-agregar]').forEach((boton) => {
-        boton.addEventListener('click', () => {
-            tipoPendiente = boton.dataset.agregar;
-            campo.value = sugerirNombre(modelo.flujo, tipoPendiente);
-            campo.classList.remove('is-invalid');
-            modal.show();
-        });
-    });
+    PATRONES_SISTEMA.forEach(({ antes, despues }, i) => tipoPatron.append(new Option(`${antes}…${despues}`, String(i))));
 
-    document.getElementById('modal-nombre').addEventListener('shown.bs.modal', () => campo.select());
+    const boton = (texto, clase, accion, desactivado = false) => {
+        const b = Object.assign(document.createElement('button'), { type: 'button', className: `btn btn-sm ${clase}`, textContent: texto, disabled: desactivado });
+        b.addEventListener('click', accion);
+        return b;
+    };
 
-    document.getElementById('form-nombre').addEventListener('submit', (evento) => {
-        evento.preventDefault();
-        const nombre = campo.value.trim();
-        const error = validarNombre(modelo.flujo, nombre);
+    /** Fila del panel: nombre amigable (si es básico) + nombre real, para qué sirve y botones. */
+    function filaSistema(nombre) {
+        const presente = nombre in modelo.flujo;
+        const fila = document.createElement('tr');
 
-        if (error) {
-            document.getElementById('error-nombre').textContent = error;
-            campo.classList.add('is-invalid');
-            return;
-        }
+        const celdaNombre = Object.assign(document.createElement('td'), { className: 'text-nowrap' });
+        const etiqueta = etiquetaSistema(nombre);
+        if (etiqueta) celdaNombre.append(Object.assign(document.createElement('strong'), { textContent: etiqueta }), document.createElement('br'));
+        celdaNombre.append(Object.assign(document.createElement('code'), { textContent: nombre }));
 
-        modal.hide();
-        agregar(nombre, plantilla(tipoPendiente));
-    });
+        const celdaDescripcion = Object.assign(document.createElement('td'), { className: 'small text-body-secondary' });
+        celdaDescripcion.textContent = describirSistema(nombre) ?? '';
 
-    // --- Añadir estado del sistema: nombre fijo, sin modal.
-    function llenarMenuSistema() {
-        const lista = document.getElementById('menu-sistema');
-        const disponibles = sistemaDisponibles(modelo.flujo);
+        const celdaBotones = Object.assign(document.createElement('td'), { className: 'text-end text-nowrap' });
+        celdaBotones.append(...(presente ? [
+            boton('Ir', 'btn-outline-secondary me-1', () => { modalSistema.hide(); irA(nombre); }),
+            boton('Editar', 'btn-outline-primary me-1', () => { modalSistema.hide(); abrirEdicion(nombre); }),
+            boton('Quitar', 'btn-outline-danger', () => {
+                eliminarEstado(modelo, nombre);
+                marcarCambios();
+                dibujar();
+                llenarPanelSistema();
+            }, nombre === 'start'),
+        ] : [boton('Añadir', 'btn-primary', () => agregarSistema(nombre))]));
 
-        lista.innerHTML = disponibles.length
-            ? disponibles.map((nombre) => `<li><button type="button" class="dropdown-item font-monospace" data-sistema="${nombre}">${nombre}</button></li>`).join('')
-            : '<li><span class="dropdown-item-text text-body-secondary">Ya están todos en el flujo</span></li>';
+        fila.append(celdaNombre, celdaDescripcion, celdaBotones);
+        return fila;
     }
 
-    document.getElementById('menu-sistema').addEventListener('click', (evento) => {
-        const nombre = evento.target.dataset.sistema;
-        if (nombre) agregar(nombre, plantillaSistema(nombre));
+    /** Rellena el panel a partir del modelo (al abrirlo y tras cada cambio). */
+    function llenarPanelSistema() {
+        document.getElementById('sistema-basicos').replaceChildren(...BASICOS.map(({ nombre }) => filaSistema(nombre)));
+        document.getElementById('sistema-avanzados').replaceChildren(...AVANZADOS.map(filaSistema));
+
+        // Los de patrón (derivar_X, X_pedir_corte…) que ya están en el flujo.
+        const fijos = new Set([...BASICOS.map((b) => b.nombre), ...AVANZADOS]);
+        const porPatron = Object.keys(modelo.flujo).filter((nombre) => esEstadoSistema(nombre) && !fijos.has(nombre));
+        document.getElementById('sistema-patron-presentes').replaceChildren(...porPatron.map(filaSistema));
+
+        // Si el flujo ya usa estados avanzados, la sección se muestra abierta.
+        if (AVANZADOS.some((n) => n in modelo.flujo) || porPatron.length) document.getElementById('sistema-avanzado').open = true;
+
+        actualizarPatron();
+    }
+
+    function agregarSistema(nombre) {
+        agregarEstado(modelo, nombre, plantillaSistema(nombre, modelo.flujo), centroVisible());
+        enlazarPareja(modelo, nombre); // X_pedir_corte ↔ X_confirmar
+        marcarCambios();
+        dibujar();
+        llenarPanelSistema();
+        avisar(`«${nombre}» añadido al centro de la vista.`, 'success');
+    }
+
+    // Por patrón: se ve el nombre final mientras se escribe y se valida antes de añadir.
+    function actualizarPatron() {
+        const patron = PATRONES_SISTEMA[tipoPatron.value];
+        const { nombre, error } = nombrePatron(modelo.flujo, patron, partePatron.value);
+        const muestra = partePatron.value.trim() ? nombre : `${patron.antes}X${patron.despues} (ej. ${patron.antes}${patron.ejemplo}${patron.despues})`;
+        document.getElementById('patron-ayuda').textContent = `Nombre: ${muestra} · ${patron.descripcion}`;
+        return { nombre, error };
+    }
+
+    tipoPatron.addEventListener('change', () => { partePatron.classList.remove('is-invalid'); actualizarPatron(); });
+    partePatron.addEventListener('input', () => {
+        const { error } = actualizarPatron();
+        partePatron.classList.toggle('is-invalid', Boolean(error) && partePatron.value !== '');
+        document.getElementById('patron-error').textContent = error ?? '';
+    });
+
+    formPatron.addEventListener('submit', (evento) => {
+        evento.preventDefault();
+        const { nombre, error } = actualizarPatron();
+        if (error) {
+            partePatron.classList.add('is-invalid');
+            document.getElementById('patron-error').textContent = error;
+            partePatron.focus();
+            return;
+        }
+        partePatron.value = '';
+        partePatron.classList.remove('is-invalid');
+        agregarSistema(nombre);
+    });
+
+    document.getElementById('abrir-sistema').addEventListener('click', () => {
+        llenarPanelSistema();
+        modalSistema.show();
     });
 
     // --- Editar una caja: doble clic sobre ella o botón ✎ de su cabecera.
@@ -357,9 +462,9 @@ if (contenedor) {
         const celda = (control) => { const td = document.createElement('td'); td.append(control); fila.append(td); };
 
         const inputClave = Object.assign(document.createElement('input'), { className: 'form-control form-control-sm font-monospace', value: clave });
-        const inputTexto = Object.assign(document.createElement('input'), { className: 'form-control form-control-sm', value: text });
+        const inputTexto = Object.assign(document.createElement('input'), { className: 'form-control form-control-sm', value: text, placeholder: 'Texto de la opción (ej. Consultar mi trámite)' });
         const quitar = Object.assign(document.createElement('button'), { type: 'button', className: 'btn btn-sm btn-outline-danger', textContent: '×', title: 'Quitar opción' });
-        quitar.addEventListener('click', () => fila.remove());
+        quitar.addEventListener('click', () => { fila.remove(); actualizarVista(); });
 
         [inputClave, inputTexto, quitar].forEach(celda);
         ocultoPorFila.set(fila, { next_state: next_state ?? null, extra: extra ?? {} });
@@ -384,17 +489,23 @@ if (contenedor) {
             ? 'Estado del sistema: el bot lo usa por su nombre, no se puede cambiar.'
             : 'Solo minúsculas, números y guion bajo, empezando por una letra (ej. menu_tramites). '
               + 'Las flechas que llegan aquí se actualizan solas.';
-        document.getElementById('estado-mensaje').value = estado.message ?? '';
+        const campoMensaje = document.getElementById('estado-mensaje');
+        campoMensaje.value = estado.message ?? '';
+        campoMensaje.placeholder = ejemploMensaje(nombre, tipo);
+        document.getElementById('mensaje-ayuda').textContent = /_pedir_corte$|^seleccionar_departamento$/.test(nombre)
+            ? 'El motor reemplaza {{departamentos}} por la lista de cortes: no lo borres.'
+            : 'Selecciona texto y pulsa un botón para darle formato.';
         document.getElementById('tipo-' + tipo).checked = true;
 
         // Las filas se cargan aunque el tipo no sea menú: si cambias a "menú" mientras el modal está abierto, aparecen.
         filasOpciones.replaceChildren();
         ocultoPorFila = new WeakMap();
         const filas = opcionesDe(estado);
-        (filas.length ? filas : [{ clave: '1', text: 'Opción 1', next_state: null, extra: {} }]).forEach(agregarFila);
+        (filas.length ? filas : [{ clave: '1', text: '', next_state: null, extra: {} }]).forEach(agregarFila);
 
         mostrarSeccion(tipo);
         limpiarErrores();
+        actualizarVista();
         modalEstado.show();
     }
 
@@ -441,16 +552,74 @@ if (contenedor) {
     filasOpciones.addEventListener('input', (evento) => {
         evento.target.classList.remove('is-invalid');
         document.getElementById('opciones-error').classList.add('d-none');
+        actualizarVista();
     });
 
     formEstado.addEventListener('change', (evento) => {
-        if (evento.target.name === 'estado-tipo') mostrarSeccion(evento.target.value);
+        if (evento.target.name === 'estado-tipo') {
+            mostrarSeccion(evento.target.value);
+            actualizarVista();
+        }
     });
+
+    // --- Mensaje para WhatsApp: barra de formato, emojis, vista previa y contador.
+    const campoMensaje = document.getElementById('estado-mensaje');
+
+    /** Aplica un cambio ({ texto, inicio, fin }) al cuadro del mensaje, deja la selección y refresca la vista. */
+    function aplicarAlMensaje({ texto, inicio, fin }) {
+        campoMensaje.value = texto;
+        campoMensaje.focus();
+        campoMensaje.setSelectionRange(inicio, fin);
+        actualizarVista();
+    }
+
+    formEstado.querySelectorAll('[data-formato]').forEach((b) => b.addEventListener('click', () => {
+        aplicarAlMensaje(envolver(campoMensaje.value, campoMensaje.selectionStart, campoMensaje.selectionEnd, b.dataset.formato));
+    }));
+    formEstado.querySelectorAll('[data-lineas]').forEach((b) => b.addEventListener('click', () => {
+        aplicarAlMensaje(marcarLineas(campoMensaje.value, campoMensaje.selectionStart, campoMensaje.selectionEnd, b.dataset.lineas));
+    }));
+
+    // Selector de emojis por grupos; el emoji se inserta donde estaba el cursor.
+    const selectorEmojis = document.getElementById('selector-emojis');
+    for (const [grupo, emojis] of Object.entries(EMOJIS)) {
+        selectorEmojis.append(Object.assign(document.createElement('div'), { className: 'selector-emojis-grupo', textContent: grupo }));
+        const fila = Object.assign(document.createElement('div'), { className: 'selector-emojis-fila' });
+        emojis.forEach((emoji) => {
+            const b = Object.assign(document.createElement('button'), { type: 'button', className: 'btn btn-light btn-sm', textContent: emoji, title: 'Insertar ' + emoji });
+            b.addEventListener('click', () => aplicarAlMensaje(insertar(campoMensaje.value, campoMensaje.selectionStart, campoMensaje.selectionEnd, emoji)));
+            fila.append(b);
+        });
+        selectorEmojis.append(fila);
+    }
+
+    /** Vista previa: el mensaje (y el menú, si es menú) tal como lo enviará el bot, con el formato de WhatsApp. */
+    function actualizarVista() {
+        const tipo = formEstado.querySelector('[name="estado-tipo"]:checked')?.value;
+        const opciones = tipo === 'menu'
+            ? [...filasOpciones.querySelectorAll('tr')].map((fila) => {
+                const [clave, texto] = fila.querySelectorAll('input');
+                return { clave: clave.value, text: texto.value };
+            })
+            : [];
+        const texto = mensajeDelBot(campoMensaje.value, opciones);
+
+        const vista = document.getElementById('vista-previa');
+        if (texto.trim()) vista.innerHTML = formatearWhatsApp(texto);
+        else vista.innerHTML = '<span class="caja-vacio">(El mensaje está vacío)</span>';
+
+        const contador = document.getElementById('mensaje-contador');
+        contador.textContent = `${texto.length} / ${MAXIMO_CARACTERES}`;
+        contador.classList.toggle('text-danger', texto.length > MAXIMO_CARACTERES);
+    }
+
+    campoMensaje.addEventListener('input', actualizarVista);
 
     document.getElementById('agregar-opcion').addEventListener('click', () => {
         const claves = [...filasOpciones.querySelectorAll('tr')].map((fila) => fila.querySelector('input').value.trim());
         agregarFila({ clave: siguienteClave(claves), text: '', next_state: null, extra: {} });
         filasOpciones.lastElementChild.querySelectorAll('input')[1].focus();
+        actualizarVista();
     });
 
     formEstado.addEventListener('submit', (evento) => {
@@ -483,5 +652,5 @@ if (contenedor) {
     // haber dibujado antes para medir la altura real de cada caja. No cuenta como "cambio sin guardar".
     const sinLayoutGuardado = !layout || Object.keys(layout).length === 0;
     if (sinLayoutGuardado) ordenar();
-    else irA('start', false);
+    irA('start', false); // al abrir, al 100 % y centrado en start (legible); "Ajustar" muestra todo
 }
