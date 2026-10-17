@@ -8,3 +8,4 @@ Route::redirect('/', '/flujos');
 Route::get('/flujos', [FlujoController::class, 'index'])->name('flujos.index');
 Route::get('/flujos/crear', [FlujoController::class, 'create'])->name('flujos.create');
 Route::post('/flujos', [FlujoController::class, 'store'])->name('flujos.store');
+Route::get('/flujos/{flujo:slug}/editar', [FlujoController::class, 'edit'])->name('flujos.edit');

@@ -61,6 +61,34 @@ class FlujoTest extends TestCase
             ->assertSessionHasErrors(['nombre' => 'El campo nombre no debe tener más de 100 caracteres.']);
     }
 
+    public function test_la_lista_enlaza_al_editor(): void
+    {
+        $this->post('/flujos', ['nombre' => 'Poder Judicial']);
+
+        $this->get('/flujos')->assertSee(route('flujos.edit', 'poder-judicial'));
+    }
+
+    public function test_el_editor_recibe_el_flujo_de_la_ultima_version(): void
+    {
+        $this->post('/flujos', ['nombre' => 'Poder Judicial']);
+        $flujo = Flujo::sole();
+        $flujo->versiones()->create([
+            'numero' => 2,
+            'contenido' => ['FLUJO' => ['start' => ['message' => 'Versión dos']]],
+        ]);
+
+        $this->get('/flujos/poder-judicial/editar')
+            ->assertOk()
+            ->assertSee('id="lienzo"', false)
+            ->assertSee('versión 2')
+            ->assertSee('Versi\\u00f3n dos', false); // @json escapa las tildes dentro del <script>
+    }
+
+    public function test_editor_de_flujo_inexistente_da_404(): void
+    {
+        $this->get('/flujos/no-existe/editar')->assertNotFound();
+    }
+
     public function test_nombre_repetido_genera_slug_distinto(): void
     {
         $this->post('/flujos', ['nombre' => 'ONPE']);

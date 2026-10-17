@@ -22,6 +22,7 @@
                     <th>Slug</th>
                     <th class="text-center">Versiones</th>
                     <th>Creado</th>
+                    <th></th>
                 </tr>
             </thead>
             <tbody>
@@ -31,6 +32,9 @@
                         <td><code>{{ $flujo->slug }}</code></td>
                         <td class="text-center">{{ $flujo->versiones_count }}</td>
                         <td>{{ $flujo->created_at->format('d/m/Y H:i') }}</td>
+                        <td class="text-end">
+                            <a href="{{ route('flujos.edit', $flujo) }}" class="btn btn-sm btn-outline-primary">Editar</a>
+                        </td>
                     </tr>
                 @endforeach
             </tbody>

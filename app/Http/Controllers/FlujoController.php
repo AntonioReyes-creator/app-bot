@@ -59,6 +59,16 @@ class FlujoController extends Controller
     }
 
     /**
+     * Página del editor con la última versión del flujo. {flujo:slug} lo busca por slug (404 si no existe).
+     */
+    public function edit(Flujo $flujo): View
+    {
+        $version = $flujo->ultimaVersion;
+
+        return view('flujos.edit', compact('flujo', 'version'));
+    }
+
+    /**
      * "Poder Judicial" → "poder-judicial"; si ya existe, "poder-judicial-2", "-3"…
      */
     private function slugUnico(string $nombre): string

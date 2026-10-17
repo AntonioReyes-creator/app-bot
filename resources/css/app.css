@@ -1,2 +1,12 @@
 @import 'bootstrap/dist/css/bootstrap.min.css';
 @import 'drawflow/dist/drawflow.min.css';
+
+/* Lienzo del editor: ocupa el alto de la ventana menos la barra y la cabecera. */
+.lienzo {
+    height: calc(100vh - 160px);
+    background-color: #fff;
+    background-image: radial-gradient(#dee2e6 1px, transparent 1px);
+    background-size: 20px 20px;
+    border: 1px solid #dee2e6;
+    border-radius: .375rem;
+}
