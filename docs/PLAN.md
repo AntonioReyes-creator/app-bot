@@ -1,7 +1,7 @@
 # Plan del servicio de flujos (app-bot)
 
 > Documento de traspaso entre sesiones. Léelo completo antes de seguir.
-> Última actualización: 2026-10-16 · Estado: **etapa 1, pasos 1a y 1b terminados** (commit `ca0cca6`).
+> Última actualización: 2026-10-16 · Estado: **etapa 1, pasos 1a, 1b y 1c terminados**; sigue el **1d** (importar).
 
 ## 1. Objetivo
 
@@ -94,7 +94,7 @@ En ONPE hay dos estados casi iguales: `"Servicios - Información General"` y `"S
 
 - [x] **1a** Proyecto Laravel 13 + SQLite (commit `ca0cca6`).
 - [x] **1b** Quitar Tailwind; Bootstrap 5 + Drawflow; layout `resources/views/layouts/app.blade.php`.
-- [ ] **1c** Migraciones y modelos:
+- [x] **1c** Migraciones y modelos:
   - `flujos`: `id`, `nombre`, `slug` (único), timestamps.
   - `flujo_versiones`: `id`, `flujo_id` (FK), `numero`, `estado` (`borrador`|`publicada`), `contenido` (JSON con `FLUJO`),
     `layout` (JSON nullable, posiciones), `publicada_en` (nullable), timestamps.
