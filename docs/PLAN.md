@@ -27,7 +27,7 @@ app-bot (este servicio, Laravel 13)              proyecto existente (Laravel 8, 
 | Versión de Laravel del proyecto existente | **No se actualiza** para esto (PHP 7.4 + Laravel 8, 38 mil líneas, 9 tests: proyecto aparte) |
 | Stack del servicio | Laravel 13.37 · PHP 8.3 · MariaDB 10.4 local (XAMPP, base `app_bot`; antes SQLite) · Bootstrap 5.3 · Drawflow 0.0.60 · Vite |
 | Fuente de verdad | Se guarda el **JSON `FLUJO`** tal cual; las posiciones del lienzo van aparte (`layout`). Drawflow es solo la vista |
-| Git | Un commit local por paso/etapa. **Sin push** salvo que el usuario lo pida |
+| Git | **El usuario hace los commits**; Claude solo propone el mensaje al terminar cada proceso. Sin `git commit` ni `git push` por parte de Claude |
 
 ## 3. El formato `FLUJO` (contrato con el bot)
 
@@ -110,7 +110,7 @@ En ONPE hay dos estados casi iguales: `"Servicios - Información General"` y `"S
   - Posición automática: recorrido en anchura desde `start` (columna = distancia); huérfanos en columna aparte.
   - Colores por tipo: menú, paso, final, sistema, huérfano. Panel con totales (estados / alcanzables / huérfanos).
   - Probar: PJ → 95 cajas, 87 alcanzables, 8 huérfanas; ONPE → 42 / 12 / 30; la opción `salir` aparece.
-- [ ] Commit "Etapa 1".
+- [ ] Proponer al usuario el mensaje de commit "Etapa 1".
 
 ### Etapa 2: Edición
 

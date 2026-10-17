@@ -12,7 +12,7 @@ Al terminar cada paso, marca la casilla en el plan y actualiza la línea "Estado
 - Composer: `C:\tools\php83\php.exe C:\laragon\bin\composer\composer.phar ...`
 - Frontend: `npm run build` (o `npm run dev`). `.npmrc` tiene `ignore-scripts=true`: no quitarlo.
 - Servidor local: `C:\tools\php83\php.exe artisan serve` (usar `--port=8001` cuando corra junto al proyecto existente).
-- Base de datos local: **MariaDB 10.4 de XAMPP** (`127.0.0.1:3306`, `root` sin clave), base `app_bot`; se ve en HeidiSQL. No tocar las otras bases de ese servidor. Cliente: `C:\xampp\mysql\bin\mysql.exe`. (`database/database.sqlite` quedó en desuso.)
+- Base de datos local: **MariaDB 10.4 de XAMPP** (`127.0.0.1:3306`, `root` sin clave), base `app_bot`; se ve en HeidiSQL. No tocar las otras bases de ese servidor. Cliente: `C:\xampp\mysql\bin\mysql.exe`. Los tests usan SQLite en memoria (`phpunit.xml`), nunca `app_bot`.
 
 ## Convenciones
 
@@ -20,4 +20,4 @@ Al terminar cada paso, marca la casilla en el plan y actualiza la línea "Estado
 - Código, nombres y textos de la interfaz en español, como el proyecto existente (`Flujo`, `FlujoVersion`, `contenido`, `layout`).
 - El JSON `FLUJO` es la fuente de verdad; Drawflow es solo la vista. Conservar campos desconocidos al importar/exportar.
 - Nunca permitir renombrar los estados del sistema listados en docs/PLAN.md §4.
-- Git: un commit local por paso. **No hacer push** salvo que el usuario lo pida.
+- Git: **el usuario hace los commits.** Claude no ejecuta `git commit` ni `git push`; al terminar cada proceso propone un único mensaje de commit (en español) para que el usuario lo copie.
