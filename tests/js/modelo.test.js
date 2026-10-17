@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    agregarEstado, aplicarEdicion, crearConectado, eliminarEstado, enlazarPareja, fijarDestino, moverEstado, opcionesDe,
+    agregarEstado, aplicarEdicion, contenidoParaGuardar, crearConectado, eliminarEstado, enlazarPareja, fijarDestino, fijarTitulo,
+    esNuevo, identificadorPara, moverEstado, opcionesDe, tituloDe,
     nombreDesdeTexto, nombrePatron, plantilla, plantillaSistema, siguienteClave, sistemaDisponibles, sugerirNombre, validarNombre,
 } from '../../resources/js/flujo/modelo.js';
 import { clasificar, flujoADrawflow } from '../../resources/js/flujo/flujo-a-drawflow.js';
@@ -306,4 +307,96 @@ test('enlazarPareja: al añadir la segunda de la pareja se completa la primera (
     enlazarPareja(otro, 'a_pedir_corte');
     assert.equal(otro.flujo.a_confirmar.options['2'].next_state, 'start', 'no pisa lo que ya estaba conectado');
     assert.equal(otro.flujo.a_pedir_corte.next_state, 'a_confirmar');
+});
+
+// --- Identificador + nombre visible (paso 2d) ---
+
+test('crearConectado: identificador en slug y nombre visible = texto de la opción', () => {
+    const modelo = conMenu();                                          // start: 1 "Trámites", 2 "Salir"
+    const id = crearConectado(modelo, 'start', 1, { tipo: 'menu' });
+
+    assert.equal(id, 'salir');
+    assert.equal(tituloDe(modelo, 'salir'), 'Salir');
+    assert.equal(tituloDe(modelo, 'tramites'), 'tramites', 'sin título: se muestra el identificador');
+});
+
+test('aplicarEdicion con título: lo guarda; renombrar lo mueve; eliminar lo borra', () => {
+    const modelo = conMenu();
+    const base = { message: 'x', tipo: 'paso', next_state: 'end', opciones: [] };
+
+    aplicarEdicion(modelo, 'tramites', { ...base, nombre: 'tramites', titulo: 'Mis trámites en línea' });
+    assert.deepEqual(modelo.titulos, { tramites: 'Mis trámites en línea' });
+
+    aplicarEdicion(modelo, 'tramites', { ...base, nombre: 'mis_tramites', titulo: 'Mis trámites en línea' });
+    assert.deepEqual(modelo.titulos, { mis_tramites: 'Mis trámites en línea' });
+    assert.equal(modelo.flujo.start.options['1'].next_state, 'mis_tramites');
+
+    aplicarEdicion(modelo, 'mis_tramites', { ...base, nombre: 'mis_tramites', titulo: '' });
+    assert.deepEqual(modelo.titulos, {}, 'título vacío = sin título propio');
+
+    fijarTitulo(modelo, 'end', 'Despedida');
+    eliminarEstado(modelo, 'end');
+    assert.ok(!('end' in modelo.titulos));
+});
+
+test('contenidoParaGuardar: sin títulos no añade _editor (importado intacto); con títulos sí, fuera de FLUJO', () => {
+    const original = { FLUJO: { start: { message: 'a' } }, otra: 1 };
+    const modelo = { flujo: { start: { message: 'a' } }, layout: {}, titulos: {} };
+
+    assert.deepEqual(contenidoParaGuardar(original, modelo), { FLUJO: { start: { message: 'a' } }, otra: 1 });
+
+    modelo.titulos.start = 'Bienvenida';
+    const conTitulos = contenidoParaGuardar(original, modelo);
+    assert.deepEqual(conTitulos._editor, { titulos: { start: 'Bienvenida' } });
+    assert.deepEqual(conTitulos.FLUJO, { start: { message: 'a' } }, 'FLUJO no lleva títulos');
+
+    modelo.titulos = {};
+    assert.ok(!('_editor' in contenidoParaGuardar({ ...original, _editor: { titulos: { start: 'x' } } }, modelo)),
+        'quitar todos los títulos limpia _editor');
+});
+
+// --- Estados nuevos: el identificador sigue al nombre visible hasta publicar ---
+
+test('crearConectado marca el estado como nuevo; importados y sistema no', () => {
+    const modelo = conMenu();                                          // start: 1 "Trámites", 2 "Salir"
+    const id = crearConectado(modelo, 'start', 1, { tipo: 'menu' });
+
+    assert.ok(esNuevo(modelo, id));
+    assert.ok(!esNuevo(modelo, 'tramites'), 'ya existía (importado)');
+    crearConectado(modelo, 'tramites', 0, { sistema: 'end_or_menu' });
+    assert.ok(!esNuevo(modelo, 'end_or_menu'), 'los del sistema nunca');
+});
+
+test('un estado nuevo puede cambiar de identificador con su nombre visible; las flechas lo siguen', () => {
+    const modelo = conMenu();
+    const id = crearConectado(modelo, 'start', 1, { tipo: 'paso' });      // "salir"
+    const nuevoId = identificadorPara(modelo.flujo, 'Opción número 1000', id);
+
+    assert.equal(nuevoId, 'opcion_numero_1000');
+    aplicarEdicion(modelo, id, { nombre: nuevoId, titulo: 'Opción número 1000', message: '', tipo: 'paso', next_state: null, opciones: [] });
+
+    assert.equal(modelo.flujo.start.options['2'].next_state, 'opcion_numero_1000');
+    assert.ok(esNuevo(modelo, 'opcion_numero_1000') && !esNuevo(modelo, 'salir'), 'la marca sigue al estado');
+    assert.equal(tituloDe(modelo, 'opcion_numero_1000'), 'Opción número 1000');
+
+    eliminarEstado(modelo, 'opcion_numero_1000');
+    assert.deepEqual(modelo.nuevos, []);
+});
+
+test('identificadorPara: slug del nombre visible, sin chocar con otros (el propio no cuenta)', () => {
+    const flujo = { start: {}, mis_tramites: {} };
+
+    assert.equal(identificadorPara(flujo, 'Consulta de Expedientes'), 'consulta_de_expedientes');
+    assert.equal(identificadorPara(flujo, 'Mis trámites'), 'mis_tramites_2');
+    assert.equal(identificadorPara(flujo, 'Mis trámites', 'mis_tramites'), 'mis_tramites');
+    assert.equal(identificadorPara(flujo, '¿?'), '');
+});
+
+test('contenidoParaGuardar guarda la lista de nuevos en _editor (fuera de FLUJO) solo si hay', () => {
+    const original = { FLUJO: { start: { message: 'a' } } };
+    const modelo = { flujo: { start: { message: 'a' } }, layout: {}, titulos: {}, nuevos: ['paso_1'] };
+
+    assert.deepEqual(contenidoParaGuardar(original, modelo)._editor, { nuevos: ['paso_1'] });
+    modelo.nuevos = [];
+    assert.ok(!('_editor' in contenidoParaGuardar(original, modelo)));
 });

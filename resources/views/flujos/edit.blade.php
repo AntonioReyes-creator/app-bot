@@ -113,8 +113,14 @@
                   <div class="row g-4">
                   <div class="col-lg-7">
                     <div class="mb-3">
-                        <label for="estado-nombre" class="form-label">Nombre</label>
-                        <input type="text" id="estado-nombre" class="form-control font-monospace" autocomplete="off">
+                        <label for="estado-titulo" class="form-label">Nombre visible</label>
+                        <input type="text" id="estado-titulo" class="form-control" maxlength="80" autocomplete="off">
+                        <div class="form-text">Libre (con tildes y espacios). Es lo que ves en el editor; el bot no lo usa.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="estado-nombre" class="form-label">&#128274; Identificador <span class="text-body-secondary small">(lo usa el bot)</span></label>
+                        <input type="text" id="estado-nombre" class="form-control font-monospace bg-body-tertiary" readonly tabindex="-1">
                         <div class="invalid-feedback" id="estado-nombre-error"></div>
                         <div class="form-text" id="estado-nombre-ayuda"></div>
                     </div>

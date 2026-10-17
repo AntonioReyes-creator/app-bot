@@ -238,8 +238,62 @@ export function aplicarEdicion(modelo, nombre, cambios) {
 
     modelo.flujo[nombre] = estado;
     if (nuevoNombre !== nombre) renombrarEstado(modelo, nombre, nuevoNombre);
+    if ('titulo' in cambios) fijarTitulo(modelo, nuevoNombre, cambios.titulo);
 
     return null;
+}
+
+// --- Nombre visible (título) de cada estado. Va en modelo.titulos y se guarda en contenido._editor.titulos,
+// fuera de FLUJO: el motor del bot no lo lee. La clave del estado es el identificador que usa el bot.
+
+const titulos = (modelo) => (modelo.titulos ??= {});
+
+/** Nombre visible del estado; si no tiene, su identificador. */
+export function tituloDe(modelo, nombre) {
+    return modelo.titulos?.[nombre] || nombre;
+}
+
+/** Guarda el nombre visible (vacío o igual al identificador = sin título propio). */
+export function fijarTitulo(modelo, nombre, titulo) {
+    const limpio = String(titulo ?? '').trim();
+    if (limpio && limpio !== nombre) titulos(modelo)[nombre] = limpio;
+    else delete titulos(modelo)[nombre];
+}
+
+// --- Estados nuevos (creados en el editor y nunca publicados): su identificador sigue al nombre visible.
+// Se guardan en contenido._editor.nuevos. Importados, anteriores y del sistema quedan fijos.
+// Etapa 3: Publicar debe vaciar esta lista (desde ahí el identificador queda fijo para no romper conversaciones).
+
+/** ¿El identificador de este estado se puede sincronizar con su nombre visible? */
+export function esNuevo(modelo, nombre) {
+    return (modelo.nuevos ?? []).includes(nombre);
+}
+
+/**
+ * Identificador para un nombre visible: su slug, sin chocar con otros estados (el propio `actual` no cuenta).
+ * "" si el texto no da un slug válido.
+ */
+export function identificadorPara(flujo, titulo, actual = null) {
+    const base = nombreDesdeTexto(titulo);
+    if (!base) return '';
+    if (base === actual) return base;
+    return nombreLibre(flujo, base);
+}
+
+/**
+ * Contenido a guardar: el original con FLUJO del modelo y, si los hay, _editor.titulos y _editor.nuevos.
+ * Sin ellos no se añade nada: un flujo importado que no se tocó queda idéntico.
+ */
+export function contenidoParaGuardar(original, modelo) {
+    const { _editor, ...resto } = original ?? {};
+    const contenido = { ...resto, FLUJO: modelo.flujo };
+    const editor = { ...(_editor ?? {}) };
+    delete editor.titulos;
+    delete editor.nuevos;
+    if (Object.keys(modelo.titulos ?? {}).length) editor.titulos = modelo.titulos;
+    if ((modelo.nuevos ?? []).length) editor.nuevos = modelo.nuevos;
+    if (Object.keys(editor).length) contenido._editor = editor;
+    return contenido;
 }
 
 /** Cambia el nombre conservando la posición de la clave y actualiza todas las flechas que llegaban. */
@@ -259,6 +313,12 @@ export function renombrarEstado(modelo, viejo, nuevo) {
 
     modelo.layout[nuevo] = modelo.layout[viejo];
     delete modelo.layout[viejo];
+
+    if (modelo.titulos && viejo in modelo.titulos) {
+        modelo.titulos[nuevo] = modelo.titulos[viejo];
+        delete modelo.titulos[viejo];
+    }
+    if (modelo.nuevos) modelo.nuevos = modelo.nuevos.map((n) => (n === viejo ? nuevo : n));
 }
 
 /**
@@ -280,13 +340,17 @@ export function fijarDestino(modelo, nombre, indice, destino) {
 /**
  * Crea un estado nuevo a la derecha del origen y lo conecta a su salida nº `indice`.
  * nuevo = { tipo: 'menu'|'paso'|'final' } o { sistema: 'end_or_menu' }.
- * Nombre automático: el texto de la opción en snake_case ("Opción 1" → opcion_1); si la salida no tiene
- * texto (opción vacía o «sigue»), el tipo numerado (paso_1, menu_2…). Devuelve el nombre creado.
+ * Identificador automático: el texto de la opción en snake_case ("Opción 1" → opcion_1), y ese texto queda
+ * como nombre visible; si la salida no tiene texto (opción vacía o «sigue»), el tipo numerado (paso_1…).
+ * Devuelve el identificador creado.
  */
 export function crearConectado(modelo, origen, indice, nuevo) {
-    const texto = nombreDesdeTexto(salidas(modelo.flujo[origen])[indice]?.texto);
+    const textoOpcion = salidas(modelo.flujo[origen])[indice]?.texto ?? '';
+    const texto = nombreDesdeTexto(textoOpcion);
     const nombre = nuevo.sistema
         ?? (texto ? nombreLibre(modelo.flujo, texto) : sugerirNombre(modelo.flujo, nuevo.tipo));
+    if (!nuevo.sistema && texto) fijarTitulo(modelo, nombre, textoOpcion); // nombre visible = texto de la opción
+    if (!nuevo.sistema) (modelo.nuevos ??= []).push(nombre); // nuevo: su identificador sigue al nombre visible
     const estado = nuevo.sistema ? plantillaSistema(nuevo.sistema, modelo.flujo) : plantilla(nuevo.tipo);
     const desde = modelo.layout[origen] ?? { x: 0, y: 0 };
 
@@ -311,5 +375,7 @@ export function eliminarEstado(modelo, nombre) {
     if (nombre === 'start') return false;
     delete modelo.flujo[nombre];
     delete modelo.layout[nombre];
+    if (modelo.titulos) delete modelo.titulos[nombre];
+    if (modelo.nuevos) modelo.nuevos = modelo.nuevos.filter((n) => n !== nombre);
     return true;
 }

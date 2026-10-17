@@ -5,8 +5,9 @@ import { AVANZADOS, BASICOS, PATRONES_SISTEMA, describirSistema, esEstadoSistema
 import { ordenarArbol } from './flujo/ordenar.js';
 import { EMOJIS, MAXIMO_CARACTERES, envolver, formatearWhatsApp, insertar, marcarLineas, mensajeDelBot } from './flujo/whatsapp.js';
 import {
-    agregarEstado, aplicarEdicion, crearConectado, eliminarEstado, enlazarPareja, fijarDestino, moverEstado, nombrePatron,
-    ejemploMensaje, opcionesDe, plantillaSistema, siguienteClave, sistemaDisponibles, validarNombre,
+    agregarEstado, aplicarEdicion, contenidoParaGuardar, crearConectado, eliminarEstado, enlazarPareja, fijarDestino,
+    esNuevo, identificadorPara, moverEstado, nombrePatron, tituloDe,
+    ejemploMensaje, opcionesDe, plantillaSistema, siguienteClave, sistemaDisponibles,
 } from './flujo/modelo.js';
 
 // Página del editor (flujos/edit.blade.php).
@@ -17,7 +18,12 @@ if (contenedor) {
     const { contenido, layout } = JSON.parse(document.getElementById('datos-flujo').textContent);
 
     // Se fijan desde el inicio las posiciones automáticas, para que las cajas no salten al añadir otras.
-    const modelo = { flujo: contenido.FLUJO, layout: calcularPosiciones(contenido.FLUJO, layout ?? {}) };
+    const modelo = {
+        flujo: contenido.FLUJO,
+        layout: calcularPosiciones(contenido.FLUJO, layout ?? {}),
+        titulos: { ...(contenido._editor?.titulos ?? {}) }, // nombres visibles (fuera de FLUJO)
+        nuevos: [...(contenido._editor?.nuevos ?? [])],      // creados aquí y sin publicar: identificador sincronizado
+    };
     let nombrePorId = new Map();
     let hayCambios = false;
 
@@ -26,7 +32,7 @@ if (contenedor) {
 
     function dibujar() {
         cerrarMenuSalida();
-        const resultado = flujoADrawflow(modelo.flujo, modelo.layout);
+        const resultado = flujoADrawflow(modelo.flujo, modelo.layout, modelo.titulos);
         editor.import(resultado.datos);
         nombrePorId = resultado.nombrePorId;
         alinearSalidas();
@@ -72,7 +78,7 @@ if (contenedor) {
                     Accept: 'application/json',
                     'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
                 },
-                body: JSON.stringify({ contenido: { ...contenido, FLUJO: modelo.flujo }, layout: modelo.layout }),
+                body: JSON.stringify({ contenido: contenidoParaGuardar(contenido, modelo), layout: modelo.layout }),
             });
             const datos = await respuesta.json().catch(() => ({}));
 
@@ -197,7 +203,7 @@ if (contenedor) {
         const separador = () => Object.assign(document.createElement('hr'), { className: 'dropdown-divider' });
 
         const partes = [
-            titulo(salida.clave === null ? `${nombre} · sigue` : `${nombre} · opción ${salida.clave}${salida.texto ? ' · ' + salida.texto : ''}`),
+            titulo(salida.clave === null ? `${tituloDe(modelo, nombre)} · sigue` : `${tituloDe(modelo, nombre)} · opción ${salida.clave}${salida.texto ? ' · ' + salida.texto : ''}`),
             item('+ Nuevo menú', () => crearConectado(modelo, nombre, indice, { tipo: 'menu' })),
             item('+ Nuevo paso', () => crearConectado(modelo, nombre, indice, { tipo: 'paso' })),
             item('+ Nuevo final', () => crearConectado(modelo, nombre, indice, { tipo: 'final' })),
@@ -211,7 +217,7 @@ if (contenedor) {
 
         partes.push(separador(), titulo('Conectar con uno existente'));
         Object.keys(modelo.flujo).forEach((destino) => partes.push(
-            item(destino === salida.destino ? `${destino} ✓` : destino, () => fijarDestino(modelo, nombre, indice, destino), 'font-monospace'),
+            item(`${tituloDe(modelo, destino)}${destino === salida.destino ? ' ✓' : ''}`, () => fijarDestino(modelo, nombre, indice, destino)),
         ));
 
         if (salida.destino != null) {
@@ -483,12 +489,19 @@ if (contenedor) {
         const sistema = esEstadoSistema(nombre);
 
         const campoNombre = document.getElementById('estado-nombre');
+        const campoTitulo = document.getElementById('estado-titulo');
+        // El identificador nunca se escribe a mano. En un estado nuevo (creado aquí y sin publicar) sigue al
+        // nombre visible; en los demás (importados, del sistema, ya publicados) queda fijo: el bot lo guarda en
+        // cada conversación y cambiarlo dejaría conversaciones en curso apuntando a un estado que ya no existe.
         campoNombre.value = nombre;
-        campoNombre.disabled = sistema;
+        campoTitulo.value = modelo.titulos[nombre] ?? '';
+        campoTitulo.placeholder = nombre;
+        sincronizarIdentificador = esNuevo(modelo, nombre);
         document.getElementById('estado-nombre-ayuda').textContent = sistema
-            ? 'Estado del sistema: el bot lo usa por su nombre, no se puede cambiar.'
-            : 'Solo minúsculas, números y guion bajo, empezando por una letra (ej. menu_tramites). '
-              + 'Las flechas que llegan aquí se actualizan solas.';
+            ? 'Estado del sistema: el motor lo reconoce por este identificador; no cambia.'
+            : sincronizarIdentificador
+                ? 'Estado nuevo: se actualiza con el nombre visible hasta que el flujo se publique.'
+                : 'Fijo: ya existía (o ya se publicó). Cambiarlo rompería las conversaciones en curso.';
         const campoMensaje = document.getElementById('estado-mensaje');
         campoMensaje.value = estado.message ?? '';
         campoMensaje.placeholder = ejemploMensaje(nombre, tipo);
@@ -508,6 +521,13 @@ if (contenedor) {
         actualizarVista();
         modalEstado.show();
     }
+
+    // Estado nuevo: al escribir el nombre visible, el identificador se recalcula (slug, sin chocar con otros).
+    let sincronizarIdentificador = false;
+    document.getElementById('estado-titulo').addEventListener('input', (evento) => {
+        if (!sincronizarIdentificador) return;
+        document.getElementById('estado-nombre').value = identificadorPara(modelo.flujo, evento.target.value, editando) || editando;
+    });
 
     // --- Errores del modal: se marcan en rojo en el campo que está mal, con el mensaje debajo.
     function limpiarErrores() {
@@ -540,13 +560,6 @@ if (contenedor) {
         }
     }
 
-    // El nombre se revisa mientras se escribe (si cambió respecto al actual).
-    document.getElementById('estado-nombre').addEventListener('input', (evento) => {
-        const valor = evento.target.value.trim();
-        const error = valor === editando ? null : validarNombre(modelo.flujo, valor);
-        evento.target.classList.toggle('is-invalid', Boolean(error));
-        document.getElementById('estado-nombre-error').textContent = error ?? '';
-    });
 
     // Al corregir una clave marcada en rojo, se quita la marca.
     filasOpciones.addEventListener('input', (evento) => {
@@ -626,7 +639,8 @@ if (contenedor) {
         evento.preventDefault();
 
         const error = aplicarEdicion(modelo, editando, {
-            nombre: document.getElementById('estado-nombre').value,
+            nombre: document.getElementById('estado-nombre').value, // calculado: solo cambia en estados nuevos
+            titulo: document.getElementById('estado-titulo').value,
             message: document.getElementById('estado-mensaje').value,
             tipo: formEstado.querySelector('[name="estado-tipo"]:checked').value,
             next_state: modelo.flujo[editando].next_state ?? null, // el destino de "sigue" no cambia aquí

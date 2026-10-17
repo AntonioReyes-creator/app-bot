@@ -90,3 +90,8 @@
 .vista-whatsapp-burbuja code.wa-bloque { display: block; white-space: pre-wrap; padding: .25rem .4rem; }
 .vista-whatsapp-burbuja .wa-cita { display: inline-block; border-left: 3px solid #b0b3b5; padding-left: .5rem; color: #54656f; }
 .vista-whatsapp-burbuja .wa-vineta { color: #54656f; }
+
+/* Nombre visible (grande) e identificador (pequeño, el que usa el bot) en la cabecera de la caja. */
+.caja-nombres { display: flex; flex-direction: column; min-width: 0; }
+.caja-titulo { font-weight: 600; overflow-wrap: anywhere; }
+.caja-nombres.con-titulo .caja-nombre { font-weight: 400; font-size: .7rem; color: #6c757d; }

@@ -144,8 +144,9 @@ export function tiposDeConexion(flujo) {
  *  - resumen: { total, alcanzables, sinConexion }.
  *  - nombrePorId: Map id de Drawflow ("1") → nombre del estado; los ids cambian en cada dibujo.
  *  - conexiones: { lineas, atajos } (cuántas se dibujan y cuántas van como etiqueta).
+ * titulos: nombres visibles { identificador: "Nombre visible" } (contenido._editor.titulos).
  */
-export function flujoADrawflow(flujo, layout = {}) {
+export function flujoADrawflow(flujo, layout = {}, titulos = {}) {
     const nombres = Object.keys(flujo);
     const idDe = new Map(nombres.map((nombre, i) => [nombre, String(i + 1)]));
     const posiciones = calcularPosiciones(flujo, layout);
@@ -169,7 +170,7 @@ export function flujoADrawflow(flujo, layout = {}) {
             class: ['tipo-' + tipo, sistema ? 'es-sistema' : '', alcanzables.has(nombre) ? '' : 'sin-conexion']
                 .filter(Boolean)
                 .join(' '),
-            html: htmlCaja(nombre, estado, tipo, sistema, lista, flujo, tipos[nombre]),
+            html: htmlCaja(nombre, estado, tipo, sistema, lista, flujo, tipos[nombre], titulos),
             typenode: false,
             inputs: { input_1: { connections: [] } },
             outputs: Object.fromEntries(lista.map((_, i) => ['output_' + (i + 1), { connections: [] }])),
@@ -207,7 +208,8 @@ export function flujoADrawflow(flujo, layout = {}) {
     };
 }
 
-function htmlCaja(nombre, estado, tipo, sistema, lista, flujo, tiposSalida = []) {
+function htmlCaja(nombre, estado, tipo, sistema, lista, flujo, tiposSalida = [], titulos = {}) {
+    const visible = (id) => titulos[id] || id; // nombre visible de un estado (o su identificador)
     const candado = sistema ? '<span class="caja-candado" title="Estado del sistema: el nombre no se puede cambiar">&#128274;</span>' : '';
 
     const filas = lista.map(({ clave, texto, destino, oculta }, i) => {
@@ -215,11 +217,11 @@ function htmlCaja(nombre, estado, tipo, sistema, lista, flujo, tiposSalida = [])
         const roto = !sinConectar && !(destino in flujo);
         const textoHtml = texto ? escapar(texto) : '<span class="caja-vacio">(sin texto)</span>';
         const etiqueta = clave === null ? '<span class="caja-clave">sigue</span>' : `<span class="caja-clave">${escapar(clave)}</span> ${textoHtml}`;
-        let destinoHtml = sinConectar ? 'sin conectar' : `&rarr; ${escapar(destino)}${roto ? ' &#9888; no existe' : ''}`;
+        let destinoHtml = sinConectar ? 'sin conectar' : `&rarr; ${escapar(visible(destino))}${roto ? ' &#9888; no existe' : ''}`;
         if (tiposSalida[i] === 'lejos-atras' || tiposSalida[i] === 'lejos-adelante') {
             // Caja lejana: etiqueta en vez de línea; clic = ir a ese estado. ↩ está a la izquierda, ⇢ a la derecha.
             const simbolo = tiposSalida[i] === 'lejos-atras' ? '&#8617;' : '&#8674;';
-            destinoHtml = `<button type="button" class="caja-atajo" data-ir="${escapar(destino)}" title="Está lejos en el lienzo: clic para ir a «${escapar(destino)}»">${simbolo} ${escapar(destino)}</button>`;
+            destinoHtml = `<button type="button" class="caja-atajo" data-ir="${escapar(destino)}" title="Está lejos en el lienzo: clic para ir a «${escapar(visible(destino))}»">${simbolo} ${escapar(visible(destino))}</button>`;
         }
         // data-salida: editor.js coloca la bolita nº i a la altura de esta fila.
         return `<li data-salida="${i}" class="${oculta ? 'opcion-oculta' : ''}${roto ? ' destino-roto' : ''}${sinConectar ? ' destino-pendiente' : ''}">`
@@ -228,7 +230,10 @@ function htmlCaja(nombre, estado, tipo, sistema, lista, flujo, tiposSalida = [])
     });
 
     return `<div class="caja">`
-        + `<div class="caja-cabecera"><span class="caja-nombre">${escapar(nombre)}</span>${candado}`
+        // Nombre visible en grande y, debajo, el identificador (lo que usa el bot). Sin nombre visible: solo el identificador.
+        + `<div class="caja-cabecera"><div class="caja-nombres${titulos[nombre] ? ' con-titulo' : ''}">`
+        + (titulos[nombre] ? `<span class="caja-titulo">${escapar(titulos[nombre])}</span>` : '')
+        + `<span class="caja-nombre">${escapar(nombre)}</span></div>${candado}`
         + (etiquetaSistema(nombre) ? `<span class="caja-etiqueta">${etiquetaSistema(nombre)}</span>` : '')
         + `<span class="caja-tipo">${ETIQUETAS[tipo]}</span>`
         + `<button type="button" class="caja-editar" data-editar title="Editar (o doble clic en la caja)">&#9998;</button></div>`

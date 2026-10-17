@@ -80,3 +80,13 @@ test('ordenarArbol: lo que no cuelga de start (suelto, y end que solo recibe ata
     assert.equal(layout.end.y, layout.suelto.y, 'misma fila de la cuadrícula');
     assert.notEqual(layout.end.x, layout.suelto.x);
 });
+
+test('con nombres visibles: la caja muestra el nombre visible y su identificador; flechas y etiquetas usan el nombre visible', () => {
+    const f = { start: { message: 'a', options: { 1: { text: 'Ir', next_state: 'mis_tramites' } } }, mis_tramites: { message: 'b', options: { 1: { text: 'Volver', next_state: 'start' } } } };
+    const { datos } = flujoADrawflow(f, { start: { x: 40, y: 40 }, mis_tramites: { x: 400, y: 40 } }, { mis_tramites: 'Mis trámites', start: 'Bienvenida' });
+
+    assert.match(caja(datos, 'mis_tramites').html, /class="caja-titulo">Mis trámites<\/span><span class="caja-nombre">mis_tramites</);
+    assert.match(caja(datos, 'start').html, /&rarr; Mis trámites/);
+    assert.match(caja(datos, 'mis_tramites').html, /data-ir="start"[^>]*>&#8617; Bienvenida/, 'la etiqueta lleva el identificador en data-ir y muestra el nombre visible');
+    assert.doesNotMatch(flujoADrawflow(f).datos.drawflow.Home.data['1'].html, /caja-titulo/, 'sin títulos: como antes');
+});

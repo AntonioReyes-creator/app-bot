@@ -203,4 +203,30 @@ class FlujoTest extends TestCase
     {
         $this->delete('/flujos/no-existe')->assertNotFound();
     }
+
+    public function test_guardar_conserva_las_claves_fuera_de_flujo(): void
+    {
+        $flujo = $this->flujoCreado();
+        $contenido = [
+            'FLUJO' => ['start' => ['message' => 'Hola', 'next_state' => 'end'], 'end' => ['message' => '']],
+            '_editor' => ['titulos' => ['start' => 'Bienvenida']],
+            'otra_clave' => ['version_motor' => 2],
+        ];
+
+        $this->putJson('/flujos/poder-judicial/borrador', ['contenido' => $contenido])->assertOk();
+
+        $this->assertSame($contenido, $flujo->fresh()->ultimaVersion->contenido);
+    }
+
+    public function test_guardar_sin_cambios_informa_la_hora_actual(): void
+    {
+        $this->flujoCreado();
+        $contenido = ['FLUJO' => ['start' => ['message' => 'Hola']]];
+        $this->putJson('/flujos/poder-judicial/borrador', ['contenido' => $contenido]);
+
+        $this->travel(5)->minutes();
+        $respuesta = $this->putJson('/flujos/poder-judicial/borrador', ['contenido' => $contenido])->assertOk();
+
+        $this->assertSame(now()->format('Y-m-d H:i'), \Illuminate\Support\Carbon::parse($respuesta->json('guardado_en'))->format('Y-m-d H:i'));
+    }
 }

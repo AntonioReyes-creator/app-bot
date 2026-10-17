@@ -81,7 +81,9 @@ class FlujoController extends Controller
         // los mensajes del bot (quitarían saltos de línea finales y cambiarían "" por null).
         $crudo = json_decode($request->getContent(), true);
 
-        $datos = Validator::make(is_array($crudo) ? $crudo : [], [
+        // validate() devuelve solo los campos con reglas: se usa para comprobar, pero se guarda $crudo completo
+        // (si no, se perderían las claves fuera de FLUJO, como _editor con los nombres visibles).
+        Validator::make(is_array($crudo) ? $crudo : [], [
             'contenido' => ['required', 'array'],
             'contenido.FLUJO' => ['required', 'array'],
             'contenido.FLUJO.*' => ['array'],
@@ -93,7 +95,7 @@ class FlujoController extends Controller
         ])->validate();
 
         // FLUJO es un objeto de estados {"start": {...}}, no una lista [...].
-        if (array_is_list($datos['contenido']['FLUJO'])) {
+        if (array_is_list($crudo['contenido']['FLUJO'])) {
             throw ValidationException::withMessages(['contenido.FLUJO' => 'FLUJO debe ser un objeto con los estados.']);
         }
 
@@ -103,9 +105,11 @@ class FlujoController extends Controller
         }
 
         $version->fill([
-            'contenido' => $datos['contenido'],
-            'layout' => $datos['layout'] ?? null,
-        ])->save();
+            'contenido' => $crudo['contenido'],
+            'layout' => $crudo['layout'] ?? null,
+        ]);
+        // Sin cambios, save() no toca updated_at y "Guardado a las…" mostraría la hora anterior.
+        $version->exists && ! $version->isDirty() ? $version->touch() : $version->save();
 
         return response()->json([
             'numero' => $version->numero,
