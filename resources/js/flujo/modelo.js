@@ -313,6 +313,11 @@ export function renombrarEstado(modelo, viejo, nuevo) {
 
     modelo.layout[nuevo] = modelo.layout[viejo];
     delete modelo.layout[viejo];
+    // posiciones de sus copias de vista ("copia:viejo#i" → "copia:nuevo#i")
+    for (const clave of Object.keys(modelo.layout).filter((c) => c.startsWith(`copia:${viejo}#`))) {
+        modelo.layout[`copia:${nuevo}#${clave.slice(`copia:${viejo}#`.length)}`] = modelo.layout[clave];
+        delete modelo.layout[clave];
+    }
 
     if (modelo.titulos && viejo in modelo.titulos) {
         modelo.titulos[nuevo] = modelo.titulos[viejo];
@@ -427,6 +432,7 @@ export function eliminarEstado(modelo, nombre) {
     if (nombre === 'start') return false;
     delete modelo.flujo[nombre];
     delete modelo.layout[nombre];
+    for (const clave of Object.keys(modelo.layout).filter((c) => c.startsWith(`copia:${nombre}#`))) delete modelo.layout[clave];
     if (modelo.titulos) delete modelo.titulos[nombre];
     if (modelo.nuevos) modelo.nuevos = modelo.nuevos.filter((n) => n !== nombre);
     return true;

@@ -122,8 +122,11 @@ export function arbolDeEstados(flujo) {
 const MARGEN_ATRAS = 100;
 
 /**
- * Cómo se DIBUJA cada conexión. Devuelve { nombre: ['linea' | 'atajo-atras' | 'atajo-cruce' | null, …] } en el
- * orden de salidas() (null = sin destino válido), en este orden:
+ * Cómo se DIBUJA cada conexión. Devuelve { nombre: ['linea' | 'copia' | 'atajo-atras' | 'atajo-cruce' | null, …] } en
+ * el orden de salidas() (null = sin destino válido), en este orden:
+ *  - no es del árbol, el destino tiene opciones y no es start ni un antepasado (ej. varias cajas → end_or_menu) →
+ *    copia: línea a una cajita "copia de vista" del destino dibujada junto al origen (el FLUJO no se duplica).
+ *    Solo si `copias` está activado (interruptor ⧉ Copias del editor); si no, se ve como etiqueta ⇢.
  *  - destino a la izquierda (volver atrás, ej. "volver al menú") → etiqueta ↩.
  *  - no es del árbol (el destino ya cuelga de otra opción, ej. varias "No, gracias" → end) → etiqueta ⇢:
  *    el mapa muestra solo la jerarquía, sin haces de líneas hacia los estados compartidos.
@@ -131,15 +134,31 @@ const MARGEN_ATRAS = 100;
  *  - si no → línea.
  * Es solo visual: el FLUJO no cambia.
  */
-export function tiposDeDibujo(flujo, posiciones, cruzan = new Set(), aristas = arbolDeEstados(flujo).aristas) {
+export function tiposDeDibujo(flujo, posiciones, cruzan = new Set(), { arbol = arbolDeEstados(flujo), copias = false } = {}) {
+    const { aristas, hijos } = arbol;
+    const padre = new Map([...hijos].flatMap(([p, lista]) => lista.map((h) => [h, p])));
+    const esAntepasado = (quien, de) => { // ¿`quien` es `de` o está por encima de él en el árbol?
+        for (let n = de; n != null; n = padre.get(n)) if (n === quien) return true;
+        return false;
+    };
+
     return Object.fromEntries(Object.entries(flujo).map(([nombre, estado]) => [nombre, salidas(estado).map(({ destino }, i) => {
         if (destino == null || !(destino in flujo)) return null;
+        if (copias && !aristas.has(`${nombre}#${i}`) && esCompartidoConOpciones(flujo, destino) && !esAntepasado(destino, nombre)) return 'copia';
         if (posiciones[destino].x < posiciones[nombre].x - MARGEN_ATRAS) return 'atajo-atras';
         if (!aristas.has(`${nombre}#${i}`)) return 'atajo-cruce';
         if (cruzan.has(`${nombre}#${i}`)) return 'atajo-cruce';
         return 'linea';
     })]));
 }
+
+/** Destino que se puede mostrar como copia de vista: tiene opciones y no es start (volver al inicio es ↩). */
+function esCompartidoConOpciones(flujo, destino) {
+    return destino !== 'start' && Object.keys(flujo[destino]?.options ?? {}).length > 0;
+}
+
+/** Clave de una copia de vista en el layout: "copia:origen#i" (origen y nº de salida que la usan). */
+export const claveCopia = (origen, indice) => `copia:${origen}#${indice}`;
 
 /** ¿La salida nº i de este estado va hacia atrás (destino a la izquierda)? */
 export function vaHaciaAtras(posiciones, origen, destino) {
@@ -151,17 +170,20 @@ export function vaHaciaAtras(posiciones, origen, destino) {
  *  - datos: lo que recibe editor.import() de Drawflow.
  *  - resumen: { total, alcanzables, sinConexion }.
  *  - nombrePorId: Map id de Drawflow ("1") → nombre del estado; los ids cambian en cada dibujo.
- *  - conexiones: { lineas, atajos } (cuántas se dibujan y cuántas van como etiqueta).
+ *  - copiaPorId: Map id de Drawflow → { clave, origen, indice, destino } de cada copia de vista (no son estados).
+ *  - conexiones: { lineas, atajos, copias } (líneas a cajas reales, etiquetas y líneas a copias).
  * titulos: nombres visibles { identificador: "Nombre visible" } (contenido._editor.titulos).
  * cruzan: claves "origen#i" de las conexiones cuya línea pasaría por detrás de otras cajas (se ven como etiqueta).
+ * copias: dibujar las copias de vista de los estados compartidos (interruptor ⧉ Copias).
  */
-export function flujoADrawflow(flujo, layout = {}, titulos = {}, cruzan = new Set()) {
+export function flujoADrawflow(flujo, layout = {}, titulos = {}, cruzan = new Set(), { copias = false } = {}) {
     const nombres = Object.keys(flujo);
     const idDe = new Map(nombres.map((nombre, i) => [nombre, String(i + 1)]));
     const posiciones = calcularPosiciones(flujo, layout);
     const alcanzables = distancias(flujo);
-    const tipos = tiposDeDibujo(flujo, posiciones, cruzan);
-    const conexiones = { lineas: 0, atajos: 0 };
+    const tipos = tiposDeDibujo(flujo, posiciones, cruzan, { copias });
+    const conexiones = { lineas: 0, atajos: 0, copias: 0 };
+    const copiaPorId = new Map();
     const nodos = {};
 
     // 1. Una caja por estado, con sus salidas todavía sin conectar.
@@ -189,10 +211,32 @@ export function flujoADrawflow(flujo, layout = {}, titulos = {}, cruzan = new Se
     }
 
     // 2. Una flecha por salida cuyo destino existe y no es atajo. Drawflow exige anotarla en los dos extremos.
+    //    Si es copia: se crea la cajita "copia de vista" junto al origen y la flecha va a ella.
     for (const nombre of nombres) {
         const origen = idDe.get(nombre);
         salidas(flujo[nombre]).forEach(({ destino }, i) => {
             if (!idDe.has(destino)) return; // destino inexistente: queda sin flecha (lo marcará el validador)
+            if (tipos[nombre][i] === 'copia') {
+                conexiones.copias++;
+                const id = String(nombres.length + copiaPorId.size + 1);
+                const clave = claveCopia(nombre, i);
+                const lugar = layout?.[clave] ?? { x: posiciones[nombre].x + 420, y: posiciones[nombre].y + 40 + 22 * i };
+                copiaPorId.set(id, { clave, origen: nombre, indice: i, destino });
+                nodos[id] = {
+                    id: Number(id),
+                    name: clave,
+                    data: { copiaDe: destino },
+                    class: `copia tipo-${clasificar(flujo[destino])}`,
+                    html: htmlCopia(destino, flujo, titulos),
+                    typenode: false,
+                    inputs: { input_1: { connections: [{ node: origen, input: 'output_' + (i + 1) }] } },
+                    outputs: {},
+                    pos_x: lugar.x,
+                    pos_y: lugar.y,
+                };
+                nodos[origen].outputs['output_' + (i + 1)].connections.push({ node: id, output: 'input_1' });
+                return;
+            }
             if (tipos[nombre][i] !== 'linea') {
                 conexiones.atajos++; // se muestra como etiqueta en la fila (htmlCaja)
                 return;
@@ -213,6 +257,7 @@ export function flujoADrawflow(flujo, layout = {}, titulos = {}, cruzan = new Se
             sinConexion: nombres.length - alcanzables.size,
         },
         nombrePorId: new Map([...idDe].map(([nombre, id]) => [id, nombre])),
+        copiaPorId,
         conexiones,
     };
 }
@@ -248,6 +293,29 @@ function htmlCaja(nombre, estado, tipo, sistema, lista, flujo, tiposSalida = [],
         + `<button type="button" class="caja-editar" data-editar title="Editar (o doble clic en la caja)">&#9998;</button></div>`
         + `<div class="caja-mensaje">${estado.message ? escapar(estado.message) : '<span class="caja-vacio">(sin mensaje)</span>'}</div>`
         + (filas.length ? `<ul class="caja-salidas">${filas.join('')}</ul>` : '')
+        + `</div>`;
+}
+
+/**
+ * Copia de vista de un estado compartido, compacta (una "píldora"): su nombre y, debajo, sus opciones como
+ * etiquetas para ir (1 ⇢ start · 2 ⇢ encuesta_inicio). Sin bolitas de salida: de la copia no salen líneas.
+ * Es solo lectura: se edita la caja real (doble clic lleva a ella).
+ */
+function htmlCopia(nombre, flujo, titulos = {}) {
+    const visible = (id) => titulos[id] || id;
+    const opciones = Object.entries(flujo[nombre].options ?? {}).map(([clave, opcion]) => {
+        const destino = opcion?.next_state;
+        const texto = escapar(opcion?.text ?? '');
+        return destino == null
+            ? `<span class="copia-opcion" title="${texto}">${escapar(clave)} &middot; sin conectar</span>`
+            : `<button type="button" class="caja-atajo copia-opcion" data-ir="${escapar(destino)}" title="${escapar(clave)}. ${texto} → ${escapar(visible(destino))}">`
+                + `${escapar(clave)} &#8674; ${escapar(visible(destino))}</button>`;
+    });
+    const nombreHtml = etiquetaSistema(nombre) ? `${iconoSistema(nombre)} ${etiquetaSistema(nombre)}` : escapar(visible(nombre));
+
+    return `<div class="copia-pildora" title="Copia de vista de «${escapar(visible(nombre))}» (${escapar(nombre)}) · doble clic: ir a la caja real">`
+        + `<div class="copia-nombre">&#10697; ${nombreHtml}</div>`
+        + `<div class="copia-opciones">${opciones.join('')}</div>`
         + `</div>`;
 }
 

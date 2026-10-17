@@ -28,11 +28,13 @@
                 title="Bienvenida, despedida, pasar con un asesor… pasos que el bot ya sabe hacer">&#129513; Pasos especiales</button>
         <button type="button" class="btn btn-sm btn-outline-dark" id="ordenar"
                 title="Recoloca las cajas como un árbol de izquierda a derecha y encuadra todo el flujo">&#8862; Ordenar</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="copias" aria-pressed="false"
+                title="Mostrar junto a cada caja una copia de los pasos compartidos (ej. «¿Algo más?»). Solo cambia el dibujo">&#10697; Copias</button>
         <button type="button" class="btn btn-sm btn-outline-success" id="probar"
                 title="Conversa con el bot como lo haría una persona en WhatsApp">&#9654; Probar</button>
         <span id="aviso" class="badge text-bg-danger d-none" role="status"></span>
         <span class="text-body-secondary small ms-auto">
-            Arrastra para mover · <strong>doble clic</strong> o &#9998; para editar · <strong>arrastra</strong> desde una bolita para conectar · <strong>clic derecho</strong> en la bolita: más opciones · <kbd>Supr</kbd> borra la caja o línea seleccionada · <kbd>Ctrl</kbd>+rueda: zoom
+            <strong>Doble clic</strong> o &#9998; para editar · <strong>arrastra</strong> desde una bolita para conectar · <strong>clic derecho</strong> en la bolita: más opciones · <kbd>Supr</kbd> borra la caja o línea seleccionada · <kbd>Ctrl</kbd>+rueda: zoom
         </span>
     </div>
 

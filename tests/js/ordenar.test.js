@@ -23,7 +23,7 @@ test('cajas cercanas: solo las conexiones del árbol llevan línea; volver atrá
     const { datos, conexiones } = flujoADrawflow(flujo, cerca);
 
     // árbol: start → menu_a, start → menu_b, start → end (la primera que llega a end), menu_b → hoja
-    assert.deepEqual(conexiones, { lineas: 4, atajos: 4 });
+    assert.deepEqual(conexiones, { lineas: 4, atajos: 4, copias: 0 }, 'end no tiene opciones y start es antepasado: sin copias');
     assert.equal(caja(datos, 'start').outputs.output_3.connections.length, 1, 'start → end es la del árbol: línea');
     assert.equal(caja(datos, 'menu_a').outputs.output_2.connections.length, 0, 'menu_a → end: end ya cuelga de start');
     assert.match(caja(datos, 'menu_a').html, /data-ir="end"[^>]*>&#8674; end/);

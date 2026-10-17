@@ -117,3 +117,11 @@
 @media (prefers-reduced-motion: reduce) {
     .drawflow .drawflow-node.en-simulacion { animation: none; box-shadow: 0 0 24px 8px rgba(37, 211, 102, .55); }
 }
+
+/* Copia de vista de un estado compartido (ej. end_or_menu): píldora compacta, punteada y gris; solo lectura. */
+.drawflow .drawflow-node.copia { width: 190px; min-height: 0; background: #f8f9fa; border: 1.5px dashed #adb5bd;
+    border-left: 4px solid var(--color-tipo); border-radius: 1rem; box-shadow: none; font-size: .72rem; }
+.copia-pildora { padding: .25rem .55rem .3rem; }
+.copia-nombre { font-weight: 600; color: #495057; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.copia-opciones { display: flex; flex-wrap: wrap; gap: .15rem .3rem; margin-top: .1rem; }
+.copia-opciones .copia-opcion { font-size: .68rem; padding: 0 .3rem; }

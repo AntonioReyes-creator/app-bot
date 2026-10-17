@@ -22,11 +22,20 @@ if (contenedor) {
     // Se fijan desde el inicio las posiciones automáticas, para que las cajas no salten al añadir otras.
     const modelo = {
         flujo: contenido.FLUJO,
-        layout: calcularPosiciones(contenido.FLUJO, layout ?? {}),
+        // posiciones de los estados y, aparte, las de sus copias de vista ("copia:origen#i", ver flujo-a-drawflow.js)
+        layout: {
+            ...Object.fromEntries(Object.entries(layout ?? {}).filter(([clave]) => clave.startsWith('copia:'))),
+            ...calcularPosiciones(contenido.FLUJO, layout ?? {}),
+        },
         titulos: { ...(contenido._editor?.titulos ?? {}) }, // nombres visibles (fuera de FLUJO)
         nuevos: [...(contenido._editor?.nuevos ?? [])],      // creados aquí y sin publicar: identificador sincronizado
     };
     let nombrePorId = new Map();
+    let copiaPorId = new Map(); // cajitas "copia de vista": no son estados (no se editan, borran ni conectan como tales)
+
+    // Interruptor ⧉ Copias (apagado por defecto). Es una preferencia de quien mira: se recuerda en este navegador.
+    let mostrarCopias = false;
+    try { mostrarCopias = localStorage.getItem('app-bot.copias') === '1'; } catch { /* sin almacenamiento: apagado */ }
     let hayCambios = false;
 
     const editor = new Drawflow(contenedor);
@@ -36,9 +45,10 @@ if (contenedor) {
     let cruzan = new Set();
 
     function pintar() {
-        const resultado = flujoADrawflow(modelo.flujo, modelo.layout, modelo.titulos, cruzan);
+        const resultado = flujoADrawflow(modelo.flujo, modelo.layout, modelo.titulos, cruzan, { copias: mostrarCopias });
         editor.import(resultado.datos);
         nombrePorId = resultado.nombrePorId;
+        copiaPorId = resultado.copiaPorId;
         alinearSalidas();
         return resultado;
     }
@@ -151,15 +161,20 @@ if (contenedor) {
     });
 
     editor.on('nodeMoved', (id) => {
-        const antes = JSON.stringify(tiposDeDibujo(modelo.flujo, modelo.layout, cruzan));
+        const antes = JSON.stringify(tiposDeDibujo(modelo.flujo, modelo.layout, cruzan, { copias: mostrarCopias }));
         // Se lee la posición de la caja en pantalla: Drawflow guarda en sus datos (pos_x/pos_y) la posición
         // con un paso de más (resta el desplazamiento dos veces al mover), y la caja "saltaba" al reabrir.
         const caja = document.getElementById('node-' + id);
-        moverEstado(modelo, nombrePorId.get(String(id)), parseFloat(caja.style.left), parseFloat(caja.style.top));
+        const copia = copiaPorId.get(String(id));
+        if (copia) {
+            modelo.layout[copia.clave] = { x: Math.round(parseFloat(caja.style.left)), y: Math.round(parseFloat(caja.style.top)) };
+        } else {
+            moverEstado(modelo, nombrePorId.get(String(id)), parseFloat(caja.style.left), parseFloat(caja.style.top));
+        }
         marcarCambios();
         // Se redibuja solo si alguna conexión pasa de línea a etiqueta o al revés (así no se pierde la selección).
         const medidos = medirCruces();
-        if (JSON.stringify(tiposDeDibujo(modelo.flujo, modelo.layout, medidos)) !== antes) {
+        if (JSON.stringify(tiposDeDibujo(modelo.flujo, modelo.layout, medidos, { copias: mostrarCopias })) !== antes) {
             cruzan = medidos;
             dibujar();
         }
@@ -178,6 +193,10 @@ if (contenedor) {
 
         const nodoDe = new Map([...nombrePorId].map(([id, nombre]) => [nombre, document.getElementById('node-' + id)]));
         const cajas = Object.fromEntries([...nodoDe].map(([nombre, nodo]) => [nombre, aLienzo(nodo.getBoundingClientRect())]));
+        for (const [id, { clave }] of copiaPorId) { // las copias también tapan líneas
+            const nodo = document.getElementById('node-' + id);
+            if (nodo) cajas[clave] = aLienzo(nodo.getBoundingClientRect());
+        }
 
         const { aristas } = arbolDeEstados(modelo.flujo); // solo las del árbol llevan línea
         const conexiones = [];
@@ -200,6 +219,13 @@ if (contenedor) {
     editor.on('nodeRemoved', (id) => {
         const nombre = nombrePorId.get(String(id));
         lineasQuitadas = []; // las líneas de la caja borrada no se tratan como "desconectar" (ver connectionRemoved)
+
+        const copia = copiaPorId.get(String(id));
+        if (copia) { // una copia no se borra: vuelve al redibujar
+            avisar(`Es una copia de vista de «${tituloDe(modelo, copia.destino)}». Para quitarla, borra su línea (desconecta esa opción).`);
+            dibujar();
+            return;
+        }
 
         if (eliminarEstado(modelo, nombre)) {
             marcarCambios();
@@ -269,7 +295,8 @@ if (contenedor) {
     // uno, lo reemplaza) y se redibuja cuando Drawflow termina de procesar el soltar (microtarea).
     editor.on('connectionCreated', ({ output_id, input_id, output_class }) => {
         const origen = nombrePorId.get(String(output_id));
-        const destino = nombrePorId.get(String(input_id));
+        // soltar sobre una copia de vista = conectar con el estado real
+        const destino = nombrePorId.get(String(input_id)) ?? copiaPorId.get(String(input_id))?.destino;
         const indice = Number(output_class.replace('output_', '')) - 1;
         queueMicrotask(() => {
             conectar(origen, indice, destino);
@@ -405,6 +432,7 @@ if (contenedor) {
         const centro = (bolita) => bolita.offsetTop + bolita.offsetHeight / 2;
         contenedor.querySelectorAll('.drawflow-node').forEach((nodo) => {
             const nombre = nombrePorId.get(nodo.id.replace('node-', ''));
+            if (!nombre) return; // copias de vista: no son estados
             const entrada = nodo.querySelector('.inputs .input');
             alturas[nombre] = nodo.offsetHeight;
             puntos[nombre] = {
@@ -416,6 +444,20 @@ if (contenedor) {
         modelo.layout = ordenarArbol(modelo.flujo, alturas, puntos);
         dibujar();
     }
+
+    // --- ⧉ Copias: muestra u oculta las copias de vista de los estados compartidos (solo cambia el dibujo).
+    const botonCopias = document.getElementById('copias');
+    function pintarBotonCopias() {
+        botonCopias.classList.toggle('active', mostrarCopias);
+        botonCopias.setAttribute('aria-pressed', String(mostrarCopias));
+    }
+    botonCopias.addEventListener('click', () => {
+        mostrarCopias = !mostrarCopias;
+        try { localStorage.setItem('app-bot.copias', mostrarCopias ? '1' : '0'); } catch { /* sin almacenamiento */ }
+        pintarBotonCopias();
+        dibujar();
+    });
+    pintarBotonCopias();
 
     document.getElementById('ordenar').addEventListener('click', () => {
         ordenar();
@@ -557,6 +599,9 @@ if (contenedor) {
     }
 
     contenedor.addEventListener('dblclick', (evento) => {
+        const nodo = evento.target.closest('.drawflow-node');
+        const copia = nodo && copiaPorId.get(nodo.id.replace('node-', ''));
+        if (copia) return irA(copia.destino); // la copia no se edita: lleva a la caja real
         const nombre = nombreDeCaja(evento.target);
         if (nombre) abrirEdicion(nombre);
     });
