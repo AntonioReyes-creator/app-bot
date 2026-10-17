@@ -146,9 +146,9 @@ test('un menú sin opciones o con claves repetidas o vacías se rechaza sin camb
     const antes = structuredClone(modelo.flujo);
     const base = { nombre: 'start', message: 'x', tipo: 'menu', next_state: null };
 
-    assert.match(aplicarEdicion(modelo, 'start', { ...base, opciones: [] }), /al menos una opción/);
-    assert.match(aplicarEdicion(modelo, 'start', { ...base, opciones: [{ clave: '1', text: 'a', extra: {} }, { clave: '1', text: 'b', extra: {} }] }), /repetida/);
-    assert.match(aplicarEdicion(modelo, 'start', { ...base, opciones: [{ clave: ' ', text: 'a', extra: {} }] }), /número o clave/);
+    assert.match(aplicarEdicion(modelo, 'start', { ...base, opciones: [] }).mensaje, /al menos una opción/);
+    assert.match(aplicarEdicion(modelo, 'start', { ...base, opciones: [{ clave: '1', text: 'a', extra: {} }, { clave: '1', text: 'b', extra: {} }] }).mensaje, /repetida/);
+    assert.match(aplicarEdicion(modelo, 'start', { ...base, opciones: [{ clave: ' ', text: 'a', extra: {} }] }).mensaje, /número o clave/);
     assert.deepEqual(modelo.flujo, antes);
 });
 
@@ -167,9 +167,9 @@ test('no se puede renombrar un estado del sistema ni usar un nombre inválido o 
     const modelo = conMenu();
     const editar = (nombre, nuevo) => aplicarEdicion(modelo, nombre, { nombre: nuevo, message: 'x', tipo: 'final', opciones: [] });
 
-    assert.match(editar('end', 'fin'), /estado del sistema/);
-    assert.match(editar('tramites', 'Mis Tramites'), /minúsculas/);
-    assert.match(editar('tramites', 'start'), /Ya existe/);
+    assert.match(editar('end', 'fin').mensaje, /estado del sistema/);
+    assert.match(editar('tramites', 'Mis Tramites').mensaje, /minúsculas/);
+    assert.match(editar('tramites', 'start').mensaje, /Ya existe/);
 });
 
 test('destino vacío en el modal se guarda como null (sin conectar)', () => {
@@ -210,4 +210,18 @@ test('crearConectado: caja nueva con nombre automático, a la derecha y ya conec
     assert.equal(crearConectado(modelo, 'start', 0, { tipo: 'menu' }), 'menu_2');
     assert.equal(crearConectado(modelo, 'tramites', 0, { sistema: 'end_or_menu' }), 'end_or_menu');
     assert.equal(modelo.flujo.tramites.next_state, 'end_or_menu');
+});
+
+test('el error de edición indica qué campo marcar en rojo', () => {
+    const modelo = conMenu();
+    const base = { message: 'x', next_state: null };
+
+    assert.deepEqual(aplicarEdicion(modelo, 'tramites', { ...base, nombre: '', tipo: 'final', opciones: [] }),
+        { campo: 'nombre', mensaje: 'Escribe un nombre.' });
+    assert.equal(aplicarEdicion(modelo, 'start', { ...base, nombre: 'start', tipo: 'menu', opciones: [] }).campo, 'opciones');
+    assert.deepEqual(
+        aplicarEdicion(modelo, 'start', { ...base, nombre: 'start', tipo: 'menu',
+            opciones: [{ clave: '1', text: 'a', extra: {} }, { clave: '2', text: 'b', extra: {} }, { clave: '1', text: 'c', extra: {} }] }),
+        { campo: 'clave', indice: 2, mensaje: 'La opción «1» está repetida.' },
+    );
 });

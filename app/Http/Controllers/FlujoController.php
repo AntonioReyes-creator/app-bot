@@ -4,10 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Models\Flujo;
 use App\Models\FlujoVersion;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class FlujoController extends Controller
@@ -66,6 +69,48 @@ class FlujoController extends Controller
         $version = $flujo->ultimaVersion;
 
         return view('flujos.edit', compact('flujo', 'version'));
+    }
+
+    /**
+     * Guarda el borrador que envía el editor (fetch): { contenido: { FLUJO: {...} }, layout: {...} }.
+     * Si la última versión ya está publicada (inmutable), crea un borrador nuevo con el número siguiente.
+     */
+    public function guardar(Request $request, Flujo $flujo): JsonResponse
+    {
+        // Se lee el cuerpo original: los middleware TrimStrings y ConvertEmptyStringsToNull modificarían
+        // los mensajes del bot (quitarían saltos de línea finales y cambiarían "" por null).
+        $crudo = json_decode($request->getContent(), true);
+
+        $datos = Validator::make(is_array($crudo) ? $crudo : [], [
+            'contenido' => ['required', 'array'],
+            'contenido.FLUJO' => ['required', 'array'],
+            'contenido.FLUJO.*' => ['array'],
+            'layout' => ['nullable', 'array'],
+        ], [
+            'contenido.FLUJO.required' => 'El contenido debe tener la clave FLUJO.',
+            'contenido.FLUJO.array' => 'FLUJO debe ser un objeto con los estados.',
+            'contenido.FLUJO.*.array' => 'Cada estado de FLUJO debe ser un objeto.',
+        ])->validate();
+
+        // FLUJO es un objeto de estados {"start": {...}}, no una lista [...].
+        if (array_is_list($datos['contenido']['FLUJO'])) {
+            throw ValidationException::withMessages(['contenido.FLUJO' => 'FLUJO debe ser un objeto con los estados.']);
+        }
+
+        $version = $flujo->ultimaVersion;
+        if ($version->estado === 'publicada') {
+            $version = $flujo->versiones()->make(['numero' => $version->numero + 1, 'estado' => 'borrador']);
+        }
+
+        $version->fill([
+            'contenido' => $datos['contenido'],
+            'layout' => $datos['layout'] ?? null,
+        ])->save();
+
+        return response()->json([
+            'numero' => $version->numero,
+            'guardado_en' => $version->updated_at->toIso8601String(), // el navegador lo muestra en hora local
+        ]);
     }
 
     /**

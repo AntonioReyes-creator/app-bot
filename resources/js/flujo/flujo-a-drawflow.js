@@ -83,17 +83,48 @@ export function calcularPosiciones(flujo, layout = {}) {
     return posiciones;
 }
 
+/** Un destino que recibe estas conexiones o más se muestra como atajo en vez de con líneas. */
+export const MINIMO_FRECUENTE = 3;
+
 /**
- * Devuelve { datos, resumen, nombrePorId }:
+ * Cómo se dibuja cada conexión, para no llenar el lienzo de líneas largas. Devuelve
+ * { nombre: ['linea' | 'regreso' | 'frecuente' | null, …] } en el orden de salidas() (null = sin destino válido).
+ *  - regreso: el destino está a la misma distancia de start o menos (ej. "volver al menú"). Una conexión
+ *    "hacia adelante" en el recorrido en anchura siempre va de la distancia d a la d+1.
+ *  - frecuente: el destino recibe MINIMO_FRECUENTE conexiones o más (ej. end).
+ * Es solo visual: el FLUJO no cambia.
+ */
+export function tiposDeConexion(flujo) {
+    const distancia = distancias(flujo);
+    const entradas = new Map();
+    for (const estado of Object.values(flujo)) {
+        for (const { destino } of salidas(estado)) {
+            if (destino != null && destino in flujo) entradas.set(destino, (entradas.get(destino) ?? 0) + 1);
+        }
+    }
+
+    return Object.fromEntries(Object.entries(flujo).map(([nombre, estado]) => [nombre, salidas(estado).map(({ destino }) => {
+        if (destino == null || !(destino in flujo)) return null;
+        if (entradas.get(destino) >= MINIMO_FRECUENTE) return 'frecuente';
+        if (distancia.has(nombre) && distancia.has(destino) && distancia.get(destino) <= distancia.get(nombre)) return 'regreso';
+        return 'linea';
+    })]));
+}
+
+/**
+ * Devuelve { datos, resumen, nombrePorId, conexiones }:
  *  - datos: lo que recibe editor.import() de Drawflow.
  *  - resumen: { total, alcanzables, sinConexion }.
  *  - nombrePorId: Map id de Drawflow ("1") → nombre del estado; los ids cambian en cada dibujo.
+ *  - conexiones: { lineas, atajos } (cuántas se dibujan y cuántas van como etiqueta).
  */
 export function flujoADrawflow(flujo, layout = {}) {
     const nombres = Object.keys(flujo);
     const idDe = new Map(nombres.map((nombre, i) => [nombre, String(i + 1)]));
     const posiciones = calcularPosiciones(flujo, layout);
     const alcanzables = distancias(flujo);
+    const tipos = tiposDeConexion(flujo);
+    const conexiones = { lineas: 0, atajos: 0 };
     const nodos = {};
 
     // 1. Una caja por estado, con sus salidas todavía sin conectar.
@@ -111,7 +142,7 @@ export function flujoADrawflow(flujo, layout = {}) {
             class: ['tipo-' + tipo, sistema ? 'es-sistema' : '', alcanzables.has(nombre) ? '' : 'sin-conexion']
                 .filter(Boolean)
                 .join(' '),
-            html: htmlCaja(nombre, estado, tipo, sistema, lista, flujo),
+            html: htmlCaja(nombre, estado, tipo, sistema, lista, flujo, tipos[nombre]),
             typenode: false,
             inputs: { input_1: { connections: [] } },
             outputs: Object.fromEntries(lista.map((_, i) => ['output_' + (i + 1), { connections: [] }])),
@@ -120,11 +151,16 @@ export function flujoADrawflow(flujo, layout = {}) {
         };
     }
 
-    // 2. Una flecha por salida cuyo destino existe. Drawflow exige anotarla en los dos extremos.
+    // 2. Una flecha por salida cuyo destino existe y no es atajo. Drawflow exige anotarla en los dos extremos.
     for (const nombre of nombres) {
         const origen = idDe.get(nombre);
         salidas(flujo[nombre]).forEach(({ destino }, i) => {
             if (!idDe.has(destino)) return; // destino inexistente: queda sin flecha (lo marcará el validador)
+            if (tipos[nombre][i] !== 'linea') {
+                conexiones.atajos++; // se muestra como etiqueta en la fila (htmlCaja)
+                return;
+            }
+            conexiones.lineas++;
             const salida = 'output_' + (i + 1);
             const llegada = idDe.get(destino);
             nodos[origen].outputs[salida].connections.push({ node: llegada, output: 'input_1' });
@@ -140,17 +176,26 @@ export function flujoADrawflow(flujo, layout = {}) {
             sinConexion: nombres.length - alcanzables.size,
         },
         nombrePorId: new Map([...idDe].map(([nombre, id]) => [id, nombre])),
+        conexiones,
     };
 }
 
-function htmlCaja(nombre, estado, tipo, sistema, lista, flujo) {
+function htmlCaja(nombre, estado, tipo, sistema, lista, flujo, tiposSalida = []) {
     const candado = sistema ? '<span class="caja-candado" title="Estado del sistema: el nombre no se puede cambiar">&#128274;</span>' : '';
 
     const filas = lista.map(({ clave, texto, destino, oculta }, i) => {
         const sinConectar = destino == null;
         const roto = !sinConectar && !(destino in flujo);
         const etiqueta = clave === null ? '<span class="caja-clave">sigue</span>' : `<span class="caja-clave">${escapar(clave)}</span> ${escapar(texto)}`;
-        const destinoHtml = sinConectar ? 'sin conectar' : `&rarr; ${escapar(destino)}${roto ? ' &#9888; no existe' : ''}`;
+        const atajo = tiposSalida[i] === 'regreso' || tiposSalida[i] === 'frecuente';
+        let destinoHtml = sinConectar ? 'sin conectar' : `&rarr; ${escapar(destino)}${roto ? ' &#9888; no existe' : ''}`;
+        if (atajo) {
+            // Etiqueta en vez de línea; clic = ir a ese estado. ↩ vuelve atrás, ⇥ destino muy usado.
+            const [simbolo, ayuda] = tiposSalida[i] === 'regreso'
+                ? ['&#8617;', 'Vuelve a un estado anterior']
+                : ['&#8677;', 'Destino muy usado'];
+            destinoHtml = `<button type="button" class="caja-atajo" data-ir="${escapar(destino)}" title="${ayuda}: clic para ir a «${escapar(destino)}»">${simbolo} ${escapar(destino)}</button>`;
+        }
         // data-salida: editor.js coloca la bolita nº i a la altura de esta fila.
         return `<li data-salida="${i}" class="${oculta ? 'opcion-oculta' : ''}${roto ? ' destino-roto' : ''}${sinConectar ? ' destino-pendiente' : ''}">`
             + `${etiqueta}${oculta ? ' <em>(oculta)</em>' : ''}`

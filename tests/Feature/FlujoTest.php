@@ -97,4 +97,68 @@ class FlujoTest extends TestCase
 
         $this->assertSame(['onpe', 'onpe-2', 'onpe-3'], Flujo::orderBy('id')->pluck('slug')->all());
     }
+
+    // --- Guardar borrador (PUT /flujos/{slug}/borrador) ---
+
+    private function flujoCreado(): Flujo
+    {
+        $this->post('/flujos', ['nombre' => 'Poder Judicial']);
+
+        return Flujo::sole();
+    }
+
+    public function test_guardar_actualiza_el_borrador_con_contenido_y_layout(): void
+    {
+        $flujo = $this->flujoCreado();
+        $contenido = ['FLUJO' => [
+            'start' => ['message' => "*Hola*\nElige:\n", 'options' => [
+                '1' => ['text' => 'Trámites', 'next_state' => 'end', 'keywords' => ['tramite']],
+                'salir' => ['text' => 'Salir', 'next_state' => 'end'],
+                '2' => ['text' => '', 'next_state' => null],
+            ]],
+            'end' => ['message' => 'Fin'],
+        ]];
+
+        $this->putJson('/flujos/poder-judicial/borrador', ['contenido' => $contenido, 'layout' => ['start' => ['x' => 40, 'y' => 40]]])
+            ->assertOk()
+            ->assertJson(['numero' => 1]);
+
+        $version = $flujo->versiones()->sole(); // no se crea otra versión: se actualiza el borrador
+        $this->assertSame($contenido, $version->contenido, 'se guarda tal cual: saltos de línea, "" y null, campos extra');
+        $this->assertSame(['1', 'salir', '2'], array_map('strval', array_keys($version->contenido['FLUJO']['start']['options'])));
+        $this->assertSame(['start' => ['x' => 40, 'y' => 40]], $version->layout);
+        $this->assertStringContainsString('"Trámites"', DB::table('flujo_versiones')->value('contenido'));
+    }
+
+    public function test_guardar_rechaza_contenido_sin_flujo_o_mal_formado(): void
+    {
+        $this->flujoCreado();
+
+        $this->putJson('/flujos/poder-judicial/borrador', ['contenido' => ['otra' => 1]])
+            ->assertUnprocessable()->assertJsonValidationErrors(['contenido.FLUJO' => 'El contenido debe tener la clave FLUJO.']);
+        $this->putJson('/flujos/poder-judicial/borrador', ['contenido' => ['FLUJO' => 'texto']])
+            ->assertUnprocessable()->assertJsonValidationErrors(['contenido.FLUJO' => 'FLUJO debe ser un objeto con los estados.']);
+        $this->putJson('/flujos/poder-judicial/borrador', ['contenido' => ['FLUJO' => [['message' => 'lista']]]])
+            ->assertUnprocessable()->assertJsonValidationErrors(['contenido.FLUJO' => 'FLUJO debe ser un objeto con los estados.']);
+        $this->putJson('/flujos/poder-judicial/borrador', ['contenido' => ['FLUJO' => ['start' => 'texto']]])
+            ->assertUnprocessable()->assertJsonValidationErrors(['contenido.FLUJO.start']);
+    }
+
+    public function test_si_la_ultima_version_esta_publicada_se_crea_un_borrador_nuevo(): void
+    {
+        $flujo = $this->flujoCreado();
+        $flujo->ultimaVersion->update(['estado' => 'publicada', 'publicada_en' => now()]);
+        $publicada = $flujo->ultimaVersion->contenido;
+
+        $this->putJson('/flujos/poder-judicial/borrador', ['contenido' => ['FLUJO' => ['start' => ['message' => 'v2']]]])
+            ->assertOk()->assertJson(['numero' => 2]);
+
+        $this->assertSame($publicada, $flujo->versiones()->where('numero', 1)->first()->contenido, 'la publicada no cambia');
+        $this->assertSame('borrador', $flujo->fresh()->ultimaVersion->estado);
+    }
+
+    public function test_guardar_flujo_inexistente_da_404(): void
+    {
+        $this->putJson('/flujos/no-existe/borrador', ['contenido' => ['FLUJO' => ['start' => ['message' => 'x']]]])->assertNotFound();
+    }
 }

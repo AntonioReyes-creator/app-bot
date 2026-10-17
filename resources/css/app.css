@@ -54,3 +54,11 @@
 /* Botón ✎ de cada caja (abre el modal de edición, igual que el doble clic). */
 .caja-editar { border: 0; background: none; padding: 0 .15rem; line-height: 1; color: #6c757d; cursor: pointer; }
 .caja-editar:hover { color: #0d6efd; }
+
+/* Atajos: conexión de regreso (↩) o a un destino muy usado (⇥), mostrada como etiqueta en vez de línea. */
+.caja-atajo { border: 1px solid #ced4da; border-radius: 1rem; background: #f8f9fa; padding: 0 .45rem; font-size: .75rem;
+    font-family: var(--bs-font-monospace); color: #495057; cursor: pointer; line-height: 1.4; }
+.caja-atajo:hover { background: #e7f1ff; border-color: #0d6efd; color: #0d6efd; }
+
+/* Caja a la que se llegó con un atajo: se resalta un momento. */
+.drawflow .drawflow-node.resaltada { box-shadow: 0 0 0 4px rgba(13, 110, 253, .45); transition: box-shadow .2s; }

@@ -2,6 +2,7 @@ import Drawflow from 'drawflow';
 import { Modal } from 'bootstrap';
 import { calcularPosiciones, clasificar, flujoADrawflow, salidas } from './flujo/flujo-a-drawflow.js';
 import { esEstadoSistema } from './flujo/estados-sistema.js';
+import { ordenarArbol } from './flujo/ordenar.js';
 import {
     agregarEstado, aplicarEdicion, crearConectado, eliminarEstado, fijarDestino, moverEstado, opcionesDe,
     plantilla, plantillaSistema, siguienteClave, sistemaDisponibles, sugerirNombre, validarNombre,
@@ -54,9 +55,55 @@ if (contenedor) {
     function marcarCambios() {
         hayCambios = true;
         document.getElementById('sin-guardar').classList.remove('d-none');
+        document.getElementById('guardado').classList.add('d-none');
     }
 
-    // Avisar antes de salir de la página si hay cambios (todavía no se pueden guardar).
+    // --- Guardar: envía el modelo tal cual (FLUJO + layout). El servidor actualiza el borrador.
+    const botonGuardar = document.getElementById('guardar');
+
+    async function guardar() {
+        botonGuardar.disabled = true;
+        botonGuardar.textContent = 'Guardando…';
+        try {
+            const respuesta = await fetch(botonGuardar.dataset.url, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                },
+                body: JSON.stringify({ contenido: { ...contenido, FLUJO: modelo.flujo }, layout: modelo.layout }),
+            });
+            const datos = await respuesta.json().catch(() => ({}));
+
+            if (!respuesta.ok) {
+                const detalle = datos.errors ? Object.values(datos.errors).flat()[0] : datos.message;
+                avisar(`No se pudo guardar: ${detalle ?? 'error ' + respuesta.status}`);
+                return;
+            }
+
+            hayCambios = false;
+            document.getElementById('sin-guardar').classList.add('d-none');
+            const guardado = document.getElementById('guardado');
+            guardado.textContent = `✓ Guardado a las ${new Date(datos.guardado_en).toLocaleTimeString()}`;
+            guardado.classList.remove('d-none');
+        } catch {
+            avisar('No se pudo guardar: sin conexión con el servidor.');
+        } finally {
+            botonGuardar.disabled = false;
+            botonGuardar.textContent = 'Guardar';
+        }
+    }
+
+    botonGuardar.addEventListener('click', guardar);
+    document.addEventListener('keydown', (evento) => {
+        if ((evento.ctrlKey || evento.metaKey) && evento.key.toLowerCase() === 's') {
+            evento.preventDefault(); // que el navegador no abra "Guardar página como"
+            if (!botonGuardar.disabled) guardar();
+        }
+    });
+
+    // Avisar antes de salir de la página si hay cambios sin guardar.
     window.addEventListener('beforeunload', (evento) => {
         if (hayCambios) evento.preventDefault();
     });
@@ -182,6 +229,51 @@ if (contenedor) {
         if (evento.key === 'Escape') cerrarMenuSalida();
     });
 
+    // --- Mover la vista del lienzo (mismo formato que usa Drawflow internamente).
+    function moverVista(x, y) {
+        editor.canvas_x = x;
+        editor.canvas_y = y;
+        editor.precanvas.style.transform = `translate(${x}px, ${y}px) scale(${editor.zoom})`;
+    }
+
+    // --- Atajos: clic en la etiqueta ↩/⇥ de una fila → centrar la vista en ese estado y resaltarlo.
+    contenedor.addEventListener('click', (evento) => {
+        const atajo = evento.target.closest('[data-ir]');
+        if (atajo) irA(atajo.dataset.ir);
+    });
+
+    function irA(nombre, resaltar = true) {
+        const posicion = modelo.layout[nombre];
+        const id = [...nombrePorId].find(([, n]) => n === nombre)?.[0];
+        if (!posicion || !id) return;
+
+        moverVista(
+            contenedor.clientWidth / 2 - (posicion.x + 140) * editor.zoom,
+            contenedor.clientHeight / 2 - (posicion.y + 60) * editor.zoom,
+        );
+        if (!resaltar) return;
+        const caja = document.getElementById('node-' + id);
+        caja.classList.add('resaltada');
+        setTimeout(() => caja.classList.remove('resaltada'), 1500);
+    }
+
+    // --- Ordenar: recoloca todo como árbol con la altura real de cada caja (ya dibujada) y centra en start.
+    function ordenar() {
+        const alturas = {};
+        contenedor.querySelectorAll('.drawflow-node').forEach((nodo) => {
+            alturas[nombrePorId.get(nodo.id.replace('node-', ''))] = nodo.offsetHeight;
+        });
+
+        modelo.layout = ordenarArbol(modelo.flujo, alturas);
+        dibujar();
+        irA('start', false);
+    }
+
+    document.getElementById('ordenar').addEventListener('click', () => {
+        ordenar();
+        marcarCambios();
+    });
+
     /** Mensaje breve junto a la barra de herramientas (no bloquea como alert). */
     let temporizadorAviso;
     function avisar(texto) {
@@ -290,7 +382,8 @@ if (contenedor) {
         campoNombre.disabled = sistema;
         document.getElementById('estado-nombre-ayuda').textContent = sistema
             ? 'Estado del sistema: el bot lo usa por su nombre, no se puede cambiar.'
-            : 'Minúsculas, números y guion bajo. Las flechas que llegan aquí se actualizan solas.';
+            : 'Solo minúsculas, números y guion bajo, empezando por una letra (ej. menu_tramites). '
+              + 'Las flechas que llegan aquí se actualizan solas.';
         document.getElementById('estado-mensaje').value = estado.message ?? '';
         document.getElementById('tipo-' + tipo).checked = true;
 
@@ -301,9 +394,54 @@ if (contenedor) {
         (filas.length ? filas : [{ clave: '1', text: 'Opción 1', next_state: null, extra: {} }]).forEach(agregarFila);
 
         mostrarSeccion(tipo);
-        document.getElementById('estado-error').classList.add('d-none');
+        limpiarErrores();
         modalEstado.show();
     }
+
+    // --- Errores del modal: se marcan en rojo en el campo que está mal, con el mensaje debajo.
+    function limpiarErrores() {
+        formEstado.querySelectorAll('.is-invalid').forEach((campo) => campo.classList.remove('is-invalid'));
+        document.getElementById('opciones-error').classList.add('d-none');
+        document.getElementById('estado-error').classList.add('d-none');
+    }
+
+    function mostrarError({ campo, indice, mensaje }) {
+        limpiarErrores();
+        let foco = null;
+
+        if (campo === 'nombre') {
+            foco = document.getElementById('estado-nombre');
+            document.getElementById('estado-nombre-error').textContent = mensaje;
+        } else if (campo === 'opciones' || campo === 'clave') {
+            const aviso = document.getElementById('opciones-error');
+            aviso.textContent = mensaje;
+            aviso.classList.remove('d-none');
+            foco = campo === 'clave' ? filasOpciones.querySelectorAll('tr')[indice]?.querySelector('input') : null;
+        } else {
+            const caja = document.getElementById('estado-error');
+            caja.textContent = mensaje;
+            caja.classList.remove('d-none');
+        }
+
+        if (foco) {
+            foco.classList.add('is-invalid');
+            foco.focus();
+        }
+    }
+
+    // El nombre se revisa mientras se escribe (si cambió respecto al actual).
+    document.getElementById('estado-nombre').addEventListener('input', (evento) => {
+        const valor = evento.target.value.trim();
+        const error = valor === editando ? null : validarNombre(modelo.flujo, valor);
+        evento.target.classList.toggle('is-invalid', Boolean(error));
+        document.getElementById('estado-nombre-error').textContent = error ?? '';
+    });
+
+    // Al corregir una clave marcada en rojo, se quita la marca.
+    filasOpciones.addEventListener('input', (evento) => {
+        evento.target.classList.remove('is-invalid');
+        document.getElementById('opciones-error').classList.add('d-none');
+    });
 
     formEstado.addEventListener('change', (evento) => {
         if (evento.target.name === 'estado-tipo') mostrarSeccion(evento.target.value);
@@ -330,9 +468,7 @@ if (contenedor) {
         });
 
         if (error) {
-            const caja = document.getElementById('estado-error');
-            caja.textContent = error;
-            caja.classList.remove('d-none');
+            mostrarError(error);
             return;
         }
 
@@ -342,4 +478,10 @@ if (contenedor) {
     });
 
     dibujar();
+
+    // Sin posiciones guardadas (flujo nuevo o importado): se ordena como árbol al abrir. Hace falta
+    // haber dibujado antes para medir la altura real de cada caja. No cuenta como "cambio sin guardar".
+    const sinLayoutGuardado = !layout || Object.keys(layout).length === 0;
+    if (sinLayoutGuardado) ordenar();
+    else irA('start', false);
 }

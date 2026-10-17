@@ -109,7 +109,8 @@ export function opcionesDe(estado) {
 /**
  * Aplica lo editado en el modal. cambios = { nombre, message, tipo, next_state, opciones: [{clave, text, next_state, extra}] }.
  * Los destinos no se eligen en el modal (se conectan desde las bolitas del lienzo): el editor envía los que ya tenían.
- * Valida todo antes de modificar nada. Devuelve un mensaje de error o null si se aplicó.
+ * Valida todo antes de modificar nada. Devuelve null si se aplicó o, si hay un error, dónde está para
+ * marcarlo en el formulario: { campo: 'nombre' | 'opciones' | 'clave', indice (solo 'clave'), mensaje }.
  *
  * Reglas del bot (WhatsAppController.php): un estado es final (solo message), paso (message + next_state)
  * o menú (message + options). Si hay options, el bot ignora el next_state del estado, y un "options" vacío
@@ -119,20 +120,22 @@ export function aplicarEdicion(modelo, nombre, cambios) {
     const nuevoNombre = cambios.nombre.trim();
 
     if (nuevoNombre !== nombre) {
-        if (esEstadoSistema(nombre)) return `«${nombre}» es un estado del sistema: su nombre no se puede cambiar.`;
+        if (esEstadoSistema(nombre)) {
+            return { campo: 'nombre', mensaje: `«${nombre}» es un estado del sistema: su nombre no se puede cambiar.` };
+        }
         const error = validarNombre(modelo.flujo, nuevoNombre);
-        if (error) return error;
+        if (error) return { campo: 'nombre', mensaje: error };
     }
 
     let opciones = null;
     if (cambios.tipo === 'menu') {
-        if (cambios.opciones.length === 0) return 'Un menú necesita al menos una opción.';
+        if (cambios.opciones.length === 0) return { campo: 'opciones', mensaje: 'Un menú necesita al menos una opción.' };
 
         opciones = {};
-        for (const { clave, text, next_state, extra } of cambios.opciones) {
+        for (const [indice, { clave, text, next_state, extra }] of cambios.opciones.entries()) {
             const c = String(clave).trim();
-            if (!c) return 'Cada opción necesita un número o clave.';
-            if (c in opciones) return `La opción «${c}» está repetida.`;
+            if (!c) return { campo: 'clave', indice, mensaje: 'Cada opción necesita un número o clave.' };
+            if (c in opciones) return { campo: 'clave', indice, mensaje: `La opción «${c}» está repetida.` };
             opciones[c] = { ...extra, text, next_state: next_state || null };
         }
     }

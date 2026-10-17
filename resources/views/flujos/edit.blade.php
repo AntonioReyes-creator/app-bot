@@ -13,7 +13,10 @@
         </div>
         <div class="d-flex align-items-center gap-3">
             <span id="resumen" class="text-body-secondary"></span>
-            <span id="sin-guardar" class="badge text-bg-warning d-none" title="El guardado llega en el paso 2c">Cambios sin guardar</span>
+            <span id="sin-guardar" class="badge text-bg-warning d-none">Cambios sin guardar</span>
+            <span id="guardado" class="text-success small d-none"></span>
+            <button type="button" id="guardar" class="btn btn-primary" data-url="{{ route('flujos.guardar', $flujo) }}"
+                    title="Guardar el borrador (Ctrl+S)">Guardar</button>
             <a href="{{ route('flujos.index') }}" class="btn btn-outline-secondary">Volver</a>
         </div>
     </div>
@@ -30,6 +33,8 @@
             </button>
             <ul id="menu-sistema" class="dropdown-menu"></ul>
         </div>
+        <button type="button" class="btn btn-sm btn-outline-dark ms-2" id="ordenar"
+                title="Recoloca las cajas como un árbol de izquierda a derecha">&#8862; Ordenar</button>
         <span id="aviso" class="badge text-bg-danger d-none" role="status"></span>
         <span class="text-body-secondary small ms-auto">
             Arrastra para mover · <strong>doble clic</strong> o &#9998; para editar · clic en una <strong>bolita</strong> para conectar · <kbd>Supr</kbd> borra la caja o línea seleccionada
@@ -75,6 +80,7 @@
                     <div class="mb-3">
                         <label for="estado-nombre" class="form-label">Nombre</label>
                         <input type="text" id="estado-nombre" class="form-control font-monospace" autocomplete="off">
+                        <div class="invalid-feedback" id="estado-nombre-error"></div>
                         <div class="form-text" id="estado-nombre-ayuda"></div>
                     </div>
 
@@ -109,6 +115,7 @@
                             </thead>
                             <tbody id="filas-opciones"></tbody>
                         </table>
+                        <div class="text-danger small mb-2 d-none" id="opciones-error"></div>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="agregar-opcion">+ Opción</button>
                         <div class="form-text">
                             Cada opción tiene su bolita en el lienzo: haz clic en ella para conectarla o crear el siguiente estado.
