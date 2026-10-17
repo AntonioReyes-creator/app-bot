@@ -43,8 +43,13 @@
 .destino-roto .caja-destino { color: #dc3545; }
 .destino-pendiente .caja-destino { color: #fd7e14; font-style: italic; }
 
-/* Hasta el paso 2b no se pueden crear flechas a mano: los puntos de salida no responden al ratón. */
-.lienzo.sin-conectar .drawflow .output { pointer-events: none; }
+/* Bolitas de salida: una por fila de la caja. editor.js (alinearSalidas) les pone el "top" de su fila. */
+.drawflow .drawflow-node .outputs { position: absolute; top: 0; right: 0; height: 100%; }
+.drawflow .drawflow-node .output { position: absolute; right: -13px; margin: 0; cursor: pointer; background: #fff; border-color: #6c757d; }
+.drawflow .drawflow-node .output:hover { background: #0d6efd; border-color: #0d6efd; }
+
+/* Menú que aparece al hacer clic en una bolita. */
+.menu-salida { position: fixed; z-index: 1060; max-height: 320px; overflow-y: auto; font-size: .875rem; }
 
 /* Botón ✎ de cada caja (abre el modal de edición, igual que el doble clic). */
 .caja-editar { border: 0; background: none; padding: 0 .15rem; line-height: 1; color: #6c757d; cursor: pointer; }

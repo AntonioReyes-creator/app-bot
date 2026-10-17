@@ -146,12 +146,13 @@ export function flujoADrawflow(flujo, layout = {}) {
 function htmlCaja(nombre, estado, tipo, sistema, lista, flujo) {
     const candado = sistema ? '<span class="caja-candado" title="Estado del sistema: el nombre no se puede cambiar">&#128274;</span>' : '';
 
-    const filas = lista.map(({ clave, texto, destino, oculta }) => {
+    const filas = lista.map(({ clave, texto, destino, oculta }, i) => {
         const sinConectar = destino == null;
         const roto = !sinConectar && !(destino in flujo);
         const etiqueta = clave === null ? '<span class="caja-clave">sigue</span>' : `<span class="caja-clave">${escapar(clave)}</span> ${escapar(texto)}`;
         const destinoHtml = sinConectar ? 'sin conectar' : `&rarr; ${escapar(destino)}${roto ? ' &#9888; no existe' : ''}`;
-        return `<li class="${oculta ? 'opcion-oculta' : ''}${roto ? ' destino-roto' : ''}${sinConectar ? ' destino-pendiente' : ''}">`
+        // data-salida: editor.js coloca la bolita nº i a la altura de esta fila.
+        return `<li data-salida="${i}" class="${oculta ? 'opcion-oculta' : ''}${roto ? ' destino-roto' : ''}${sinConectar ? ' destino-pendiente' : ''}">`
             + `${etiqueta}${oculta ? ' <em>(oculta)</em>' : ''}`
             + `<span class="caja-destino">${destinoHtml}</span></li>`;
     });

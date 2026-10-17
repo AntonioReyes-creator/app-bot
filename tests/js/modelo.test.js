@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    agregarEstado, aplicarEdicion, eliminarEstado, moverEstado, opcionesDe, plantilla, plantillaSistema,
-    siguienteClave, sistemaDisponibles, sugerirNombre, validarNombre,
+    agregarEstado, aplicarEdicion, crearConectado, eliminarEstado, fijarDestino, moverEstado, opcionesDe,
+    plantilla, plantillaSistema, siguienteClave, sistemaDisponibles, sugerirNombre, validarNombre,
 } from '../../resources/js/flujo/modelo.js';
 import { clasificar, flujoADrawflow } from '../../resources/js/flujo/flujo-a-drawflow.js';
 
@@ -183,4 +183,31 @@ test('siguienteClave propone el siguiente número libre', () => {
     assert.equal(siguienteClave([]), '1');
     assert.equal(siguienteClave(['1', '2', 'salir']), '3');
     assert.equal(siguienteClave(['salir']), '1');
+});
+
+// --- Bolitas: conectar, desconectar y crear desde una salida ---
+
+test('fijarDestino conecta y desconecta opciones y "sigue" según su posición', () => {
+    const modelo = conMenu();
+
+    fijarDestino(modelo, 'start', 1, null);              // opción 2 → sin conectar
+    assert.equal(modelo.flujo.start.options['2'].next_state, null);
+    assert.deepEqual(modelo.flujo.start.options['1'].keywords, ['tramite'], 'no pierde campos extra');
+
+    fijarDestino(modelo, 'tramites', 0, 'start');        // la única salida de un paso es "sigue"
+    assert.equal(modelo.flujo.tramites.next_state, 'start');
+});
+
+test('crearConectado: caja nueva con nombre automático, a la derecha y ya conectada', () => {
+    const modelo = conMenu();
+    const nombre = crearConectado(modelo, 'start', 1, { tipo: 'menu' });
+
+    assert.equal(nombre, 'menu_1');
+    assert.equal(modelo.flujo.start.options['2'].next_state, 'menu_1');
+    assert.equal(clasificar(modelo.flujo.menu_1), 'menu');
+    assert.ok(modelo.layout.menu_1.x > modelo.layout.start.x);
+
+    assert.equal(crearConectado(modelo, 'start', 0, { tipo: 'menu' }), 'menu_2');
+    assert.equal(crearConectado(modelo, 'tramites', 0, { sistema: 'end_or_menu' }), 'end_or_menu');
+    assert.equal(modelo.flujo.tramites.next_state, 'end_or_menu');
 });

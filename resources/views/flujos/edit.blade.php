@@ -32,11 +32,14 @@
         </div>
         <span id="aviso" class="badge text-bg-danger d-none" role="status"></span>
         <span class="text-body-secondary small ms-auto">
-            Arrastra para mover · <strong>doble clic</strong> o &#9998; para editar · <kbd>Supr</kbd> o <strong>×</strong> para borrar
+            Arrastra para mover · <strong>doble clic</strong> o &#9998; para editar · clic en una <strong>bolita</strong> para conectar · <kbd>Supr</kbd> borra la caja o línea seleccionada
         </span>
     </div>
 
-    <div id="lienzo" class="lienzo sin-conectar"></div>
+    <div id="lienzo" class="lienzo"></div>
+
+    {{-- Menú de una bolita (salida): editor.js lo rellena y lo coloca junto a la bolita pulsada. --}}
+    <div id="menu-salida" class="dropdown-menu shadow menu-salida"></div>
 
     {{-- Modal para el nombre de un estado nuevo. --}}
     <div class="modal fade" id="modal-nombre" tabindex="-1" aria-labelledby="modal-nombre-titulo" aria-hidden="true">
@@ -94,22 +97,22 @@
                         <label class="btn btn-outline-primary" for="tipo-menu">Mostrar un menú</label>
                     </div>
 
-                    <div id="seccion-paso" class="mb-3">
-                        <label for="estado-siguiente" class="form-label">Ir a</label>
-                        <select id="estado-siguiente" class="form-select font-monospace"></select>
-                        <div class="form-text">Si el siguiente estado no pide datos, el bot envía los dos mensajes juntos.</div>
+                    <div id="seccion-paso" class="form-text mb-3">
+                        El destino se elige en el lienzo: clic en la bolita de «sigue».
+                        Si el siguiente estado no pide datos, el bot envía los dos mensajes juntos.
                     </div>
 
                     <div id="seccion-menu">
                         <table class="table table-sm align-middle mb-2">
                             <thead>
-                                <tr><th style="width: 7rem">Nº / clave</th><th>Texto de la opción</th><th style="width: 14rem">Ir a</th><th></th></tr>
+                                <tr><th style="width: 7rem">Nº / clave</th><th>Texto de la opción</th><th></th></tr>
                             </thead>
                             <tbody id="filas-opciones"></tbody>
                         </table>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="agregar-opcion">+ Opción</button>
                         <div class="form-text">
-                            Una clave que no es número (ej. <code>salir</code>) no se lista en el menú principal, pero el usuario puede escribirla.
+                            Cada opción tiene su bolita en el lienzo: haz clic en ella para conectarla o crear el siguiente estado.
+                            Una clave que no es número (ej. <code>salir</code>) no siempre se lista en el menú, pero el usuario puede escribirla.
                         </div>
                     </div>
 

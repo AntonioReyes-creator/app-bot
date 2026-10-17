@@ -1,4 +1,5 @@
 import { NOMBRES, esEstadoSistema } from './estados-sistema.js';
+import { salidas } from './flujo-a-drawflow.js';
 
 // Operaciones sobre el modelo del editor: { flujo, layout }.
 // El modelo es la fuente de verdad; el lienzo se redibuja a partir de él (flujo-a-drawflow.js).
@@ -107,6 +108,7 @@ export function opcionesDe(estado) {
 
 /**
  * Aplica lo editado en el modal. cambios = { nombre, message, tipo, next_state, opciones: [{clave, text, next_state, extra}] }.
+ * Los destinos no se eligen en el modal (se conectan desde las bolitas del lienzo): el editor envía los que ya tenían.
  * Valida todo antes de modificar nada. Devuelve un mensaje de error o null si se aplicó.
  *
  * Reglas del bot (WhatsAppController.php): un estado es final (solo message), paso (message + next_state)
@@ -165,6 +167,38 @@ export function renombrarEstado(modelo, viejo, nuevo) {
 
     modelo.layout[nuevo] = modelo.layout[viejo];
     delete modelo.layout[viejo];
+}
+
+/**
+ * Conecta (o desconecta, con destino null) la salida nº `indice` del estado: el mismo orden que
+ * salidas() y que las bolitas del lienzo (opciones primero, "sigue" al final).
+ */
+export function fijarDestino(modelo, nombre, indice, destino) {
+    const estado = modelo.flujo[nombre];
+    const salida = salidas(estado)[indice];
+    if (!salida) return;
+
+    if (salida.clave === null) {
+        estado.next_state = destino;
+    } else {
+        estado.options[salida.clave] = { ...estado.options[salida.clave], next_state: destino };
+    }
+}
+
+/**
+ * Crea un estado nuevo a la derecha del origen y lo conecta a su salida nº `indice`.
+ * nuevo = { tipo: 'menu'|'paso'|'final' } (nombre automático: menu_1, paso_2…) o { sistema: 'end_or_menu' }.
+ * Devuelve el nombre creado.
+ */
+export function crearConectado(modelo, origen, indice, nuevo) {
+    const nombre = nuevo.sistema ?? sugerirNombre(modelo.flujo, nuevo.tipo);
+    const estado = nuevo.sistema ? plantillaSistema(nuevo.sistema) : plantilla(nuevo.tipo);
+    const desde = modelo.layout[origen] ?? { x: 0, y: 0 };
+
+    agregarEstado(modelo, nombre, estado, { x: desde.x + 340, y: desde.y + indice * 60 });
+    fijarDestino(modelo, origen, indice, nombre);
+
+    return nombre;
 }
 
 /** Siguiente número libre para una opción nueva de menú. */
