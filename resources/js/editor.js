@@ -1,12 +1,14 @@
 import Drawflow from 'drawflow';
-import { Modal } from 'bootstrap';
-import { calcularPosiciones, clasificar, conexionesLejanas, flujoADrawflow, salidas } from './flujo/flujo-a-drawflow.js';
-import { AVANZADOS, BASICOS, PATRONES_SISTEMA, describirSistema, esEstadoSistema, etiquetaSistema } from './flujo/estados-sistema.js';
+import { Modal, Offcanvas } from 'bootstrap';
+import { arbolDeEstados, calcularPosiciones, clasificar, flujoADrawflow, salidas, tiposDeDibujo, vaHaciaAtras } from './flujo/flujo-a-drawflow.js';
+import { conexionesQueCruzan } from './flujo/geometria.js';
+import { AVANZADOS, BASICOS, PATRONES_SISTEMA, describirSistema, esEstadoSistema, etiquetaSistema, iconoSistema } from './flujo/estados-sistema.js';
 import { ordenarArbol } from './flujo/ordenar.js';
+import { iniciar, responder } from './flujo/simulador.js';
 import { EMOJIS, MAXIMO_CARACTERES, envolver, formatearWhatsApp, insertar, marcarLineas, mensajeDelBot } from './flujo/whatsapp.js';
 import {
-    agregarEstado, aplicarEdicion, contenidoParaGuardar, crearConectado, eliminarEstado, enlazarPareja, fijarDestino,
-    esNuevo, identificadorPara, moverEstado, nombrePatron, tituloDe,
+    agregarEstado, aplicarEdicion, conectarYNombrar, contenidoParaGuardar, crearConectado, eliminarEstado, enlazarPareja, fijarDestino,
+    esNuevo, identificadorPara, moverEstado, nombrePatron, sincronizarHijos, tituloDe,
     ejemploMensaje, opcionesDe, plantillaSistema, siguienteClave, sistemaDisponibles,
 } from './flujo/modelo.js';
 
@@ -30,18 +32,35 @@ if (contenedor) {
     const editor = new Drawflow(contenedor);
     editor.start();
 
-    function dibujar() {
-        cerrarMenuSalida();
-        const resultado = flujoADrawflow(modelo.flujo, modelo.layout, modelo.titulos);
+    // Conexiones (claves "origen#i") cuya línea pasaría por detrás de otras cajas: se ven como etiqueta ⇢.
+    let cruzan = new Set();
+
+    function pintar() {
+        const resultado = flujoADrawflow(modelo.flujo, modelo.layout, modelo.titulos, cruzan);
         editor.import(resultado.datos);
         nombrePorId = resultado.nombrePorId;
         alinearSalidas();
+        return resultado;
+    }
+
+    /**
+     * Dibuja el lienzo. Para saber qué líneas taparían otras cajas hace falta la página dibujada (posiciones
+     * reales de cajas y bolitas): se pinta, se mide y, si cambió, se pinta otra vez (una sola, sin bucles).
+     */
+    function dibujar() {
+        cerrarMenuSalida();
+        let resultado = pintar();
+        const medidos = medirCruces();
+        if (!mismoConjunto(medidos, cruzan)) {
+            cruzan = medidos;
+            resultado = pintar();
+        }
 
         const { total, alcanzables, sinConexion } = resultado.resumen;
         let texto = `${total} estados · ${alcanzables} alcanzables desde start`;
         if (sinConexion > 0) texto += ` · ${sinConexion} sin conexión`;
         document.getElementById('resumen').textContent = texto;
-
+        marcarEstadoSimulado(); // al redibujar se crean cajas nuevas: se vuelve a marcar la del simulador
     }
 
     /**
@@ -128,18 +147,53 @@ if (contenedor) {
     // Drawflow solo escucha "soltar el ratón" dentro del lienzo: si se suelta una caja fuera (sobre la barra,
     // el borde…), el arrastre quedaba pendiente y nodeMoved llegaba tarde y con otra posición. Se le reenvía.
     document.addEventListener('mouseup', (evento) => {
-        if (!contenedor.contains(evento.target) && (editor.drag || editor.editor_selected)) editor.dragEnd(evento);
+        if (!contenedor.contains(evento.target) && (editor.drag || editor.editor_selected || editor.connection)) editor.dragEnd(evento);
     });
 
     editor.on('nodeMoved', (id) => {
-        const antes = JSON.stringify(conexionesLejanas(modelo.flujo, modelo.layout));
+        const antes = JSON.stringify(tiposDeDibujo(modelo.flujo, modelo.layout, cruzan));
         // Se lee la posición de la caja en pantalla: Drawflow guarda en sus datos (pos_x/pos_y) la posición
         // con un paso de más (resta el desplazamiento dos veces al mover), y la caja "saltaba" al reabrir.
         const caja = document.getElementById('node-' + id);
         moverEstado(modelo, nombrePorId.get(String(id)), parseFloat(caja.style.left), parseFloat(caja.style.top));
         marcarCambios();
-        if (JSON.stringify(conexionesLejanas(modelo.flujo, modelo.layout)) !== antes) dibujar();
+        // Se redibuja solo si alguna conexión pasa de línea a etiqueta o al revés (así no se pierde la selección).
+        const medidos = medirCruces();
+        if (JSON.stringify(tiposDeDibujo(modelo.flujo, modelo.layout, medidos)) !== antes) {
+            cruzan = medidos;
+            dibujar();
+        }
     });
+
+    /**
+     * Mide en la página dibujada qué conexiones hacia adelante pasarían por detrás de otras cajas, usando la
+     * misma curva que dibuja Drawflow (geometria.js). Las coordenadas se pasan al sistema del lienzo
+     * (sin desplazamiento ni zoom) para que sirvan en cualquier vista.
+     */
+    function medirCruces() {
+        const base = editor.precanvas.getBoundingClientRect();
+        const aLienzo = (r) => ({ x: (r.x - base.x) / editor.zoom, y: (r.y - base.y) / editor.zoom,
+            ancho: r.width / editor.zoom, alto: r.height / editor.zoom });
+        const centro = (el) => { const r = aLienzo(el.getBoundingClientRect()); return { x: r.x + r.ancho / 2, y: r.y + r.alto / 2 }; };
+
+        const nodoDe = new Map([...nombrePorId].map(([id, nombre]) => [nombre, document.getElementById('node-' + id)]));
+        const cajas = Object.fromEntries([...nodoDe].map(([nombre, nodo]) => [nombre, aLienzo(nodo.getBoundingClientRect())]));
+
+        const { aristas } = arbolDeEstados(modelo.flujo); // solo las del árbol llevan línea
+        const conexiones = [];
+        for (const [nombre, nodo] of nodoDe) {
+            const bolitas = nodo.querySelectorAll('.outputs .output');
+            salidas(modelo.flujo[nombre]).forEach(({ destino }, i) => {
+                if (!nodoDe.has(destino) || destino === nombre || !bolitas[i]) return;
+                if (vaHaciaAtras(modelo.layout, nombre, destino) || !aristas.has(`${nombre}#${i}`)) return; // ya son etiqueta
+                const entrada = nodoDe.get(destino).querySelector('.inputs .input');
+                if (entrada) conexiones.push({ clave: `${nombre}#${i}`, origen: nombre, destino, p1: centro(bolitas[i]), p2: centro(entrada) });
+            });
+        }
+        return conexionesQueCruzan(conexiones, cajas);
+    }
+
+    const mismoConjunto = (a, b) => a.size === b.size && [...a].every((x) => b.has(x));
 
     // --- Borrar: Drawflow ya quitó la caja; se quita también del modelo. start no se borra:
     // se redibuja desde el modelo y la caja vuelve.
@@ -180,7 +234,14 @@ if (contenedor) {
     // Se escucha en fase de captura y se detiene el evento para que Drawflow no empiece a arrastrar una flecha.
     const menuSalida = document.getElementById('menu-salida');
 
+    // Bolita de salida: clic izquierdo y arrastrar = Drawflow dibuja la línea (connectionCreated la lleva al modelo);
+    // clic derecho = menú con las opciones (crear, conectar, quitar). Se escucha en captura para que Drawflow
+    // no empiece una línea con el botón derecho ni muestre su propio menú.
     contenedor.addEventListener('mousedown', (evento) => {
+        if (evento.button !== 0 && evento.target.closest('.output')) evento.stopPropagation();
+    }, true);
+
+    contenedor.addEventListener('contextmenu', (evento) => {
         const bolita = evento.target.closest('.output');
         if (!bolita) return;
         evento.stopPropagation();
@@ -191,6 +252,31 @@ if (contenedor) {
         const indice = [...bolita.parentElement.children].indexOf(bolita);
         abrirMenuSalida(nombre, indice, bolita.getBoundingClientRect());
     }, true);
+
+    /**
+     * Conecta una salida con una caja existente (arrastrando o desde el menú). Si la caja es nueva y nadie más
+     * llega a ella, toma el nombre de la opción (conectarYNombrar) y se avisa.
+     */
+    function conectar(origen, indice, destino) {
+        const { destino: final, renombrado } = conectarYNombrar(modelo, origen, indice, destino);
+        if (renombrado && final !== destino) avisar(`«${destino}» ahora es «${tituloDe(modelo, final)}» (${final})`, 'success');
+    }
+
+    // Soltar la línea en cualquier parte de una caja la conecta (no hace falta atinar a su bolita de entrada).
+    editor.force_first_input = true;
+
+    // Línea arrastrada y soltada sobre una caja: se anota en el modelo (una salida = un destino; si ya tenía
+    // uno, lo reemplaza) y se redibuja cuando Drawflow termina de procesar el soltar (microtarea).
+    editor.on('connectionCreated', ({ output_id, input_id, output_class }) => {
+        const origen = nombrePorId.get(String(output_id));
+        const destino = nombrePorId.get(String(input_id));
+        const indice = Number(output_class.replace('output_', '')) - 1;
+        queueMicrotask(() => {
+            conectar(origen, indice, destino);
+            marcarCambios();
+            dibujar();
+        });
+    });
 
     function abrirMenuSalida(nombre, indice, rect) {
         const salida = salidas(modelo.flujo[nombre])[indice]; // mismo orden que las bolitas
@@ -211,13 +297,13 @@ if (contenedor) {
 
         const sistema = sistemaDisponibles(modelo.flujo); // solo los básicos que faltan (Fin, Pasar a un asesor)
         if (sistema.length) {
-            partes.push(separador(), titulo('Nuevo estado del sistema'));
-            sistema.forEach((s) => partes.push(item(`+ ${etiquetaSistema(s) ?? s} (${s})`, () => crearConectado(modelo, nombre, indice, { sistema: s }))));
+            partes.push(separador(), titulo('Pasos especiales'));
+            sistema.forEach((s) => partes.push(item(`${iconoSistema(s)} ${etiquetaSistema(s) ?? s}`, () => crearConectado(modelo, nombre, indice, { sistema: s }))));
         }
 
         partes.push(separador(), titulo('Conectar con uno existente'));
         Object.keys(modelo.flujo).forEach((destino) => partes.push(
-            item(`${tituloDe(modelo, destino)}${destino === salida.destino ? ' ✓' : ''}`, () => fijarDestino(modelo, nombre, indice, destino)),
+            item(`${tituloDe(modelo, destino)}${destino === salida.destino ? ' ✓' : ''}`, () => conectar(nombre, indice, destino)),
         ));
 
         if (salida.destino != null) {
@@ -313,12 +399,21 @@ if (contenedor) {
 
     // --- Ordenar: recoloca todo como árbol con la altura real de cada caja (ya dibujada) y centra en start.
     function ordenar() {
+        // alto de cada caja y altura de sus bolitas (centro), para alinear las líneas de las cadenas
         const alturas = {};
+        const puntos = {};
+        const centro = (bolita) => bolita.offsetTop + bolita.offsetHeight / 2;
         contenedor.querySelectorAll('.drawflow-node').forEach((nodo) => {
-            alturas[nombrePorId.get(nodo.id.replace('node-', ''))] = nodo.offsetHeight;
+            const nombre = nombrePorId.get(nodo.id.replace('node-', ''));
+            const entrada = nodo.querySelector('.inputs .input');
+            alturas[nombre] = nodo.offsetHeight;
+            puntos[nombre] = {
+                entrada: entrada ? centro(entrada) : null,
+                salidas: [...nodo.querySelectorAll('.outputs .output')].map(centro),
+            };
         });
 
-        modelo.layout = ordenarArbol(modelo.flujo, alturas);
+        modelo.layout = ordenarArbol(modelo.flujo, alturas, puntos);
         dibujar();
     }
 
@@ -344,7 +439,7 @@ if (contenedor) {
     const tipoPatron = document.getElementById('patron-tipo');
     const partePatron = document.getElementById('patron-parte');
 
-    PATRONES_SISTEMA.forEach(({ antes, despues }, i) => tipoPatron.append(new Option(`${antes}…${despues}`, String(i))));
+    PATRONES_SISTEMA.forEach(({ etiqueta, icono }, i) => tipoPatron.append(new Option(`${icono} ${etiqueta}`, String(i))));
 
     const boton = (texto, clase, accion, desactivado = false) => {
         const b = Object.assign(document.createElement('button'), { type: 'button', className: `btn btn-sm ${clase}`, textContent: texto, disabled: desactivado });
@@ -352,30 +447,37 @@ if (contenedor) {
         return b;
     };
 
-    /** Fila del panel: nombre amigable (si es básico) + nombre real, para qué sirve y botones. */
+    /** Fila del panel: icono + nombre amigable (y el código en pequeño), para qué sirve y qué se puede hacer. */
     function filaSistema(nombre) {
         const presente = nombre in modelo.flujo;
         const fila = document.createElement('tr');
 
         const celdaNombre = Object.assign(document.createElement('td'), { className: 'text-nowrap' });
-        const etiqueta = etiquetaSistema(nombre);
-        if (etiqueta) celdaNombre.append(Object.assign(document.createElement('strong'), { textContent: etiqueta }), document.createElement('br'));
-        celdaNombre.append(Object.assign(document.createElement('code'), { textContent: nombre }));
+        celdaNombre.append(
+            Object.assign(document.createElement('span'), { className: 'me-1', textContent: iconoSistema(nombre) }),
+            Object.assign(document.createElement('strong'), { textContent: etiquetaSistema(nombre) ?? nombre }),
+            document.createElement('br'),
+            Object.assign(document.createElement('small'), {
+                className: 'text-body-secondary font-monospace', textContent: nombre,
+                title: 'Código con el que el bot reconoce este paso (no cambia)',
+            }),
+        );
 
-        const celdaDescripcion = Object.assign(document.createElement('td'), { className: 'small text-body-secondary' });
+        const celdaDescripcion = Object.assign(document.createElement('td'), { className: 'small' });
         celdaDescripcion.textContent = describirSistema(nombre) ?? '';
 
         const celdaBotones = Object.assign(document.createElement('td'), { className: 'text-end text-nowrap' });
         celdaBotones.append(...(presente ? [
-            boton('Ir', 'btn-outline-secondary me-1', () => { modalSistema.hide(); irA(nombre); }),
-            boton('Editar', 'btn-outline-primary me-1', () => { modalSistema.hide(); abrirEdicion(nombre); }),
+            Object.assign(document.createElement('span'), { className: 'badge text-bg-success me-2', textContent: '✓ En tu flujo' }),
+            boton('Ver', 'btn-outline-secondary me-1', () => { modalSistema.hide(); irA(nombre); }),
+            boton('Editar mensaje', 'btn-outline-primary me-1', () => { modalSistema.hide(); abrirEdicion(nombre); }),
             boton('Quitar', 'btn-outline-danger', () => {
                 eliminarEstado(modelo, nombre);
                 marcarCambios();
                 dibujar();
                 llenarPanelSistema();
             }, nombre === 'start'),
-        ] : [boton('Añadir', 'btn-primary', () => agregarSistema(nombre))]));
+        ] : [boton('Añadir al flujo', 'btn-primary', () => agregarSistema(nombre))]));
 
         fila.append(celdaNombre, celdaDescripcion, celdaBotones);
         return fila;
@@ -403,15 +505,15 @@ if (contenedor) {
         marcarCambios();
         dibujar();
         llenarPanelSistema();
-        avisar(`«${nombre}» añadido al centro de la vista.`, 'success');
+        avisar(`«${etiquetaSistema(nombre) ?? nombre}» añadido al centro de la vista. Conéctalo desde una opción.`, 'success');
     }
 
     // Por patrón: se ve el nombre final mientras se escribe y se valida antes de añadir.
     function actualizarPatron() {
         const patron = PATRONES_SISTEMA[tipoPatron.value];
         const { nombre, error } = nombrePatron(modelo.flujo, patron, partePatron.value);
-        const muestra = partePatron.value.trim() ? nombre : `${patron.antes}X${patron.despues} (ej. ${patron.antes}${patron.ejemplo}${patron.despues})`;
-        document.getElementById('patron-ayuda').textContent = `Nombre: ${muestra} · ${patron.descripcion}`;
+        const muestra = partePatron.value.trim() ? nombre : `${patron.antes}${patron.ejemplo}${patron.despues}`;
+        document.getElementById('patron-ayuda').textContent = `${patron.descripcion} Código: ${muestra}`;
         return { nombre, error };
     }
 
@@ -506,7 +608,7 @@ if (contenedor) {
         campoMensaje.value = estado.message ?? '';
         campoMensaje.placeholder = ejemploMensaje(nombre, tipo);
         document.getElementById('mensaje-ayuda').textContent = /_pedir_corte$|^seleccionar_departamento$/.test(nombre)
-            ? 'El motor reemplaza {{departamentos}} por la lista de cortes: no lo borres.'
+            ? 'El sistema reemplaza {{departamentos}} por la lista de opciones: no lo borres.'
             : 'Selecciona texto y pulsa un botón para darle formato.';
         document.getElementById('tipo-' + tipo).checked = true;
 
@@ -638,8 +740,10 @@ if (contenedor) {
     formEstado.addEventListener('submit', (evento) => {
         evento.preventDefault();
 
+        const antes = salidas(modelo.flujo[editando]); // para saber qué opciones cambiaron de texto
+        const nombreFinal = document.getElementById('estado-nombre').value;
         const error = aplicarEdicion(modelo, editando, {
-            nombre: document.getElementById('estado-nombre').value, // calculado: solo cambia en estados nuevos
+            nombre: nombreFinal, // calculado: solo cambia en estados nuevos
             titulo: document.getElementById('estado-titulo').value,
             message: document.getElementById('estado-mensaje').value,
             tipo: formEstado.querySelector('[name="estado-tipo"]:checked').value,
@@ -655,9 +759,99 @@ if (contenedor) {
             return;
         }
 
+        // Si cambió el texto de una opción, su caja hija (nueva, no renombrada a mano) toma el nombre nuevo.
+        const renombrados = sincronizarHijos(modelo, nombreFinal, antes);
+        if (renombrados.length) {
+            avisar(renombrados.map(({ de, a }) => `«${de}» ahora es «${tituloDe(modelo, a)}» (${a})`).join(' · '), 'success');
+        }
+
         modalEstado.hide();
         marcarCambios();
         dibujar();
+    });
+
+    // --- Probar: simulador de la conversación. Usa modelo.flujo tal como está (con cambios sin guardar).
+    const panelSimulador = new Offcanvas(document.getElementById('simulador'));
+    const chat = document.getElementById('simulador-chat');
+    const botonEstado = document.getElementById('simulador-estado');
+    const opcionesRapidas = document.getElementById('simulador-opciones');
+    const campoTexto = document.getElementById('simulador-texto');
+    let estadoSimulado = 'start';
+    let simuladorAbierto = false;
+
+    /** Marca fija (verde, con brillo) en la caja del estado actual mientras el panel está abierto. */
+    function marcarEstadoSimulado() {
+        contenedor.querySelectorAll('.drawflow-node.en-simulacion').forEach((caja) => caja.classList.remove('en-simulacion'));
+        if (!simuladorAbierto) return;
+        const id = [...nombrePorId].find(([, nombre]) => nombre === estadoSimulado)?.[0];
+        if (id) document.getElementById('node-' + id)?.classList.add('en-simulacion');
+    }
+
+    function agregarAlChat(clase, html) {
+        const div = document.createElement('div');
+        div.className = clase;
+        div.innerHTML = html;
+        chat.append(div);
+    }
+
+    /** Muestra lo que respondió el bot, actualiza el estado actual y resalta su caja en el lienzo. */
+    function mostrarRespuesta({ estado, mensajes }) {
+        estadoSimulado = estado;
+        for (const { texto, nota } of mensajes) {
+            agregarAlChat('vista-whatsapp-burbuja', formatearWhatsApp(texto.trimEnd()));
+            if (nota) agregarAlChat('sim-nota', `&#9432; ${formatearWhatsApp(nota)}`);
+        }
+        if (mensajes.length === 0) agregarAlChat('sim-aviso', 'El bot no responde en este estado.');
+
+        const enFlujo = estado in modelo.flujo;
+        botonEstado.textContent = enFlujo ? `${tituloDe(modelo, estado)} (${estado})` : `${estado} (del sistema)`;
+        botonEstado.disabled = !enFlujo;
+        opcionesRapidas.replaceChildren(...Object.entries(modelo.flujo[estado]?.options ?? {}).map(([clave, opcion]) => {
+            const boton = document.createElement('button');
+            boton.type = 'button';
+            boton.className = 'btn btn-sm btn-outline-secondary text-truncate';
+            boton.style.maxWidth = '100%';
+            boton.textContent = `${clave}. ${opcion.text ?? ''}`;
+            boton.addEventListener('click', () => enviarAlBot(clave));
+            return boton;
+        }));
+        marcarEstadoSimulado();
+        if (enFlujo) irA(estado, false);
+        chat.scrollTop = chat.scrollHeight;
+    }
+
+    function enviarAlBot(texto) {
+        if (!String(texto).trim()) return;
+        agregarAlChat('vista-whatsapp-burbuja sim-persona', formatearWhatsApp(String(texto)));
+        mostrarRespuesta(responder(modelo.flujo, estadoSimulado, texto));
+    }
+
+    function reiniciarSimulador() {
+        chat.replaceChildren();
+        agregarAlChat('sim-aviso', 'La persona escribe por primera vez');
+        mostrarRespuesta(iniciar(modelo.flujo));
+    }
+
+    document.getElementById('probar').addEventListener('click', () => {
+        if (chat.childElementCount === 0) reiniciarSimulador();
+        panelSimulador.show();
+    });
+    document.getElementById('simulador').addEventListener('show.bs.offcanvas', () => {
+        simuladorAbierto = true;
+        marcarEstadoSimulado();
+    });
+    document.getElementById('simulador').addEventListener('shown.bs.offcanvas', () => campoTexto.focus());
+    document.getElementById('simulador').addEventListener('hidden.bs.offcanvas', () => {
+        simuladorAbierto = false;
+        marcarEstadoSimulado(); // al cerrar el panel se quita la marca
+    });
+    document.getElementById('simulador-reiniciar').addEventListener('click', reiniciarSimulador);
+    botonEstado.addEventListener('click', () => irA(estadoSimulado));
+    document.getElementById('simulador-form').addEventListener('submit', (evento) => {
+        evento.preventDefault();
+        enviarAlBot(campoTexto.value);
+        campoTexto.value = '';
+        campoTexto.focus();
     });
 
     dibujar();

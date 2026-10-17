@@ -25,12 +25,14 @@
     {{-- Barra de herramientas. Los estados normales se crean desde las bolitas de cada caja. --}}
     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
         <button type="button" class="btn btn-sm btn-outline-secondary" id="abrir-sistema"
-                title="Ver, añadir, editar o quitar los estados que usa el código del bot">&#128274; Estados del sistema</button>
+                title="Bienvenida, despedida, pasar con un asesor… pasos que el bot ya sabe hacer">&#129513; Pasos especiales</button>
         <button type="button" class="btn btn-sm btn-outline-dark" id="ordenar"
                 title="Recoloca las cajas como un árbol de izquierda a derecha y encuadra todo el flujo">&#8862; Ordenar</button>
+        <button type="button" class="btn btn-sm btn-outline-success" id="probar"
+                title="Conversa con el bot como lo haría una persona en WhatsApp">&#9654; Probar</button>
         <span id="aviso" class="badge text-bg-danger d-none" role="status"></span>
         <span class="text-body-secondary small ms-auto">
-            Arrastra para mover · <strong>doble clic</strong> o &#9998; para editar · clic en una <strong>bolita</strong> para conectar o crear · <kbd>Supr</kbd> borra la caja o línea seleccionada · <kbd>Ctrl</kbd>+rueda: zoom
+            Arrastra para mover · <strong>doble clic</strong> o &#9998; para editar · <strong>arrastra</strong> desde una bolita para conectar · <strong>clic derecho</strong> en la bolita: más opciones · <kbd>Supr</kbd> borra la caja o línea seleccionada · <kbd>Ctrl</kbd>+rueda: zoom
         </span>
     </div>
 
@@ -55,30 +57,31 @@
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h2 class="modal-title h5" id="modal-sistema-titulo">Estados del sistema</h2>
+                    <h2 class="modal-title h5" id="modal-sistema-titulo">&#129513; Pasos especiales del bot</h2>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                 </div>
                 <div class="modal-body">
+                    <p class="mb-1">El bot ya sabe hacer estos pasos por sí solo.</p>
                     <p class="small text-body-secondary">
-                        El motor del bot los reconoce por su nombre (aunque no tengan flechas), por eso su nombre no se puede cambiar.
+                        Añádelos a tu flujo y conéctalos desde una opción (arrastra desde su bolita), o elígelos con
+                        <strong>clic derecho</strong> en la bolita. Puedes cambiar su mensaje, pero no su código: el bot los reconoce por él.
                     </p>
 
-                    <h3 class="h6">Básicos</h3>
+                    <h3 class="h6">Los más usados</h3>
                     <table class="table table-sm align-middle">
                         <tbody id="sistema-basicos"></tbody>
                     </table>
 
                     <details class="mt-3" id="sistema-avanzado">
-                        <summary class="h6 mb-2">Avanzado: lógica del motor actual</summary>
+                        <summary class="h6 mb-2">Más pasos especiales (avanzado)</summary>
                         <p class="small text-body-secondary">
-                            Estados con comportamiento propio en el motor actual (pensado para el Poder Judicial: cortes, encuesta,
-                            derivaciones). Úsalos solo si tu bot necesita esa lógica.
+                            Tienen reglas propias del sistema actual (listas, encuestas, áreas). Úsalos solo si tu equipo técnico te lo indica.
                         </p>
                         <table class="table table-sm align-middle">
                             <tbody id="sistema-avanzados"></tbody>
                         </table>
 
-                        <h4 class="h6 mt-3">Por área o trámite</h4>
+                        <h4 class="h6 mt-3">Pasos para un área concreta</h4>
                         <table class="table table-sm align-middle">
                             <tbody id="sistema-patron-presentes"></tbody>
                         </table>
@@ -87,11 +90,11 @@
                             <select id="patron-tipo" class="form-select form-select-sm"></select>
                         </div>
                         <div class="col-md-4">
-                            <input type="text" id="patron-parte" class="form-control form-control-sm font-monospace" autocomplete="off" placeholder="ej. notificaciones">
+                            <input type="text" id="patron-parte" class="form-control form-control-sm font-monospace" autocomplete="off" placeholder="nombre del área, ej. notificaciones">
                             <div class="invalid-feedback" id="patron-error"></div>
                         </div>
                         <div class="col-md-3">
-                            <button type="submit" class="btn btn-sm btn-primary w-100">Añadir</button>
+                            <button type="submit" class="btn btn-sm btn-primary w-100">Añadir al flujo</button>
                         </div>
                         <div class="col-12 form-text" id="patron-ayuda"></div>
                     </form>
@@ -164,7 +167,7 @@
                     </div>
 
                     <div id="seccion-paso" class="form-text mb-3">
-                        El destino se elige en el lienzo: clic en la bolita de «sigue».
+                        El destino se elige en el lienzo: arrastra desde la bolita de «sigue» hasta otra caja (clic derecho en la bolita: más opciones).
                         Si el siguiente estado no pide datos, el bot envía los dos mensajes juntos.
                     </div>
 
@@ -178,7 +181,7 @@
                         <div class="text-danger small mb-2 d-none" id="opciones-error"></div>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="agregar-opcion">+ Opción</button>
                         <div class="form-text">
-                            Cada opción tiene su bolita en el lienzo: haz clic en ella para conectarla o crear el siguiente estado.
+                            Cada opción tiene su bolita en el lienzo: arrástrala hasta otra caja para conectarla, o clic derecho para crear el siguiente estado.
                             Una clave que no es número (ej. <code>salir</code>) no siempre se lista en el menú, pero el usuario puede escribirla.
                         </div>
                     </div>
@@ -205,6 +208,30 @@
                     <button type="submit" class="btn btn-primary">Aplicar</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    {{-- Simulador: conversación con el bot (lo que respondería el motor), usando el flujo tal como está en el editor. --}}
+    <div class="offcanvas offcanvas-end simulador" tabindex="-1" id="simulador" data-bs-scroll="true" data-bs-backdrop="false"
+         aria-labelledby="simulador-titulo">
+        <div class="offcanvas-header vista-whatsapp-cabecera">
+            <h2 class="offcanvas-title fs-6 mb-0" id="simulador-titulo">&#9654; Probar el flujo</h2>
+            <button type="button" class="btn btn-sm btn-light ms-auto me-2" id="simulador-reiniciar">&#8634; Reiniciar</button>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="Cerrar"></button>
+        </div>
+        <div class="offcanvas-body vista-whatsapp-chat d-flex flex-column gap-2" id="simulador-chat" aria-live="polite"></div>
+        <div class="border-top p-2 bg-body">
+            <div class="small text-body-secondary mb-1">
+                Estado actual: <button type="button" class="btn btn-link btn-sm p-0 align-baseline" id="simulador-estado"
+                                       title="Ir a la caja en el lienzo"></button>
+            </div>
+            <div class="d-flex flex-wrap gap-1 mb-2" id="simulador-opciones"></div>
+            <form id="simulador-form" class="input-group input-group-sm">
+                <input type="text" class="form-control" id="simulador-texto" placeholder="Escribe como la persona (ej. 1)"
+                       autocomplete="off" aria-label="Mensaje de la persona">
+                <button class="btn btn-success" type="submit">Enviar</button>
+            </form>
+            <div class="form-text">Usa el flujo como está en el editor, aunque no lo hayas guardado.</div>
         </div>
     </div>
 

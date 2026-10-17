@@ -1,4 +1,4 @@
-import { esEstadoSistema, etiquetaSistema } from './estados-sistema.js';
+import { esEstadoSistema, etiquetaSistema, iconoSistema } from './estados-sistema.js';
 
 // Traductor FLUJO → formato de importación de Drawflow. Módulo puro (sin DOM) para poder probarlo.
 //
@@ -83,59 +83,67 @@ export function calcularPosiciones(flujo, layout = {}) {
     return posiciones;
 }
 
-/** Un destino que recibe estas conexiones o más se considera "muy usado" al ordenar (ordenar.js). */
-export const MINIMO_FRECUENTE = 3;
+/**
+ * El árbol del flujo (la jerarquía): recorrido en anchura desde start y, después, desde cada estado que no
+ * cuelga de start (en el orden del FLUJO). Cada estado cuelga de la PRIMERA salida que llega a él.
+ * Devuelve { hijos: Map nombre → [hijos en el orden de las opciones], aristas: Set "origen#i" del árbol, raices }.
+ * Lo usan Ordenar (dónde va cada caja) y el dibujo (solo las conexiones del árbol llevan línea).
+ */
+export function arbolDeEstados(flujo) {
+    const hijos = new Map();
+    const aristas = new Set();
+    const visto = new Set();
+    const raices = [];
 
-/** Más allá de esta distancia entre los centros de dos cajas (px del lienzo), la conexión va como etiqueta. */
-export const DISTANCIA_ATAJO = 1000;
+    for (const raiz of ['start', ...Object.keys(flujo)]) {
+        if (!(raiz in flujo) || visto.has(raiz)) continue;
+        raices.push(raiz);
+        visto.add(raiz);
+        const cola = [raiz];
+        while (cola.length) {
+            const actual = cola.shift();
+            const lista = [];
+            salidas(flujo[actual]).forEach(({ destino }, i) => {
+                if (destino != null && destino in flujo && !visto.has(destino)) {
+                    visto.add(destino);
+                    lista.push(destino);
+                    aristas.add(`${actual}#${i}`);
+                    cola.push(destino);
+                }
+            });
+            hijos.set(actual, lista);
+        }
+    }
+
+    return { hijos, aristas, raices };
+}
 
 /** Si el destino empieza más de esto a la izquierda del origen, la conexión "vuelve atrás". */
 const MARGEN_ATRAS = 100;
 
 /**
- * Cómo se DIBUJA cada conexión, según dónde están las cajas en el lienzo. Devuelve
- * { nombre: ['linea' | 'lejos-atras' | 'lejos-adelante' | null, …] } en el orden de salidas()
- * (null = sin destino válido):
- *  - destino a la izquierda (volver atrás, ej. "volver al menú") → etiqueta ↩, aunque esté cerca:
- *    esa línea tendría que dar la vuelta por detrás de las cajas.
- *  - destino adelante y cerca → línea.
- *  - destino adelante y lejos (más de DISTANCIA_ATAJO entre centros) → etiqueta ⇢.
+ * Cómo se DIBUJA cada conexión. Devuelve { nombre: ['linea' | 'atajo-atras' | 'atajo-cruce' | null, …] } en el
+ * orden de salidas() (null = sin destino válido), en este orden:
+ *  - destino a la izquierda (volver atrás, ej. "volver al menú") → etiqueta ↩.
+ *  - no es del árbol (el destino ya cuelga de otra opción, ej. varias "No, gracias" → end) → etiqueta ⇢:
+ *    el mapa muestra solo la jerarquía, sin haces de líneas hacia los estados compartidos.
+ *  - es del árbol pero pasaría por detrás de otras cajas (`cruzan`, medido con geometria.js) → etiqueta ⇢.
+ *  - si no → línea.
  * Es solo visual: el FLUJO no cambia.
  */
-export function conexionesLejanas(flujo, posiciones) {
-    return Object.fromEntries(Object.entries(flujo).map(([nombre, estado]) => [nombre, salidas(estado).map(({ destino }) => {
+export function tiposDeDibujo(flujo, posiciones, cruzan = new Set(), aristas = arbolDeEstados(flujo).aristas) {
+    return Object.fromEntries(Object.entries(flujo).map(([nombre, estado]) => [nombre, salidas(estado).map(({ destino }, i) => {
         if (destino == null || !(destino in flujo)) return null;
-        const a = posiciones[nombre];
-        const b = posiciones[destino];
-        if (b.x < a.x - MARGEN_ATRAS) return 'lejos-atras';
-        if (Math.hypot(b.x - a.x, b.y - a.y) > DISTANCIA_ATAJO) return 'lejos-adelante';
+        if (posiciones[destino].x < posiciones[nombre].x - MARGEN_ATRAS) return 'atajo-atras';
+        if (!aristas.has(`${nombre}#${i}`)) return 'atajo-cruce';
+        if (cruzan.has(`${nombre}#${i}`)) return 'atajo-cruce';
         return 'linea';
     })]));
 }
 
-/**
- * Estructura del flujo para el botón Ordenar (ordenar.js): qué conexiones forman el árbol. Devuelve
- * { nombre: ['linea' | 'regreso' | 'frecuente' | null, …] } en el orden de salidas().
- *  - regreso: el destino está a la misma distancia de start o menos (ej. "volver al menú"). Una conexión
- *    "hacia adelante" en el recorrido en anchura siempre va de la distancia d a la d+1.
- *  - frecuente: el destino recibe MINIMO_FRECUENTE conexiones o más (ej. end).
- * No decide qué se dibuja (eso es conexionesLejanas).
- */
-export function tiposDeConexion(flujo) {
-    const distancia = distancias(flujo);
-    const entradas = new Map();
-    for (const estado of Object.values(flujo)) {
-        for (const { destino } of salidas(estado)) {
-            if (destino != null && destino in flujo) entradas.set(destino, (entradas.get(destino) ?? 0) + 1);
-        }
-    }
-
-    return Object.fromEntries(Object.entries(flujo).map(([nombre, estado]) => [nombre, salidas(estado).map(({ destino }) => {
-        if (destino == null || !(destino in flujo)) return null;
-        if (entradas.get(destino) >= MINIMO_FRECUENTE) return 'frecuente';
-        if (distancia.has(nombre) && distancia.has(destino) && distancia.get(destino) <= distancia.get(nombre)) return 'regreso';
-        return 'linea';
-    })]));
+/** ¿La salida nº i de este estado va hacia atrás (destino a la izquierda)? */
+export function vaHaciaAtras(posiciones, origen, destino) {
+    return posiciones[destino].x < posiciones[origen].x - MARGEN_ATRAS;
 }
 
 /**
@@ -145,13 +153,14 @@ export function tiposDeConexion(flujo) {
  *  - nombrePorId: Map id de Drawflow ("1") → nombre del estado; los ids cambian en cada dibujo.
  *  - conexiones: { lineas, atajos } (cuántas se dibujan y cuántas van como etiqueta).
  * titulos: nombres visibles { identificador: "Nombre visible" } (contenido._editor.titulos).
+ * cruzan: claves "origen#i" de las conexiones cuya línea pasaría por detrás de otras cajas (se ven como etiqueta).
  */
-export function flujoADrawflow(flujo, layout = {}, titulos = {}) {
+export function flujoADrawflow(flujo, layout = {}, titulos = {}, cruzan = new Set()) {
     const nombres = Object.keys(flujo);
     const idDe = new Map(nombres.map((nombre, i) => [nombre, String(i + 1)]));
     const posiciones = calcularPosiciones(flujo, layout);
     const alcanzables = distancias(flujo);
-    const tipos = conexionesLejanas(flujo, posiciones);
+    const tipos = tiposDeDibujo(flujo, posiciones, cruzan);
     const conexiones = { lineas: 0, atajos: 0 };
     const nodos = {};
 
@@ -218,10 +227,10 @@ function htmlCaja(nombre, estado, tipo, sistema, lista, flujo, tiposSalida = [],
         const textoHtml = texto ? escapar(texto) : '<span class="caja-vacio">(sin texto)</span>';
         const etiqueta = clave === null ? '<span class="caja-clave">sigue</span>' : `<span class="caja-clave">${escapar(clave)}</span> ${textoHtml}`;
         let destinoHtml = sinConectar ? 'sin conectar' : `&rarr; ${escapar(visible(destino))}${roto ? ' &#9888; no existe' : ''}`;
-        if (tiposSalida[i] === 'lejos-atras' || tiposSalida[i] === 'lejos-adelante') {
-            // Caja lejana: etiqueta en vez de línea; clic = ir a ese estado. ↩ está a la izquierda, ⇢ a la derecha.
-            const simbolo = tiposSalida[i] === 'lejos-atras' ? '&#8617;' : '&#8674;';
-            destinoHtml = `<button type="button" class="caja-atajo" data-ir="${escapar(destino)}" title="Está lejos en el lienzo: clic para ir a «${escapar(visible(destino))}»">${simbolo} ${escapar(visible(destino))}</button>`;
+        if (tiposSalida[i] === 'atajo-atras' || tiposSalida[i] === 'atajo-cruce') {
+            // Etiqueta en vez de línea; clic = ir a ese estado. ↩ vuelve atrás; ⇢ el estado está en otra rama del árbol.
+            const simbolo = tiposSalida[i] === 'atajo-atras' ? '&#8617;' : '&#8674;';
+            destinoHtml = `<button type="button" class="caja-atajo" data-ir="${escapar(destino)}" title="Está en otra parte del mapa: clic para ir a «${escapar(visible(destino))}»">${simbolo} ${escapar(visible(destino))}</button>`;
         }
         // data-salida: editor.js coloca la bolita nº i a la altura de esta fila.
         return `<li data-salida="${i}" class="${oculta ? 'opcion-oculta' : ''}${roto ? ' destino-roto' : ''}${sinConectar ? ' destino-pendiente' : ''}">`
@@ -234,7 +243,7 @@ function htmlCaja(nombre, estado, tipo, sistema, lista, flujo, tiposSalida = [],
         + `<div class="caja-cabecera"><div class="caja-nombres${titulos[nombre] ? ' con-titulo' : ''}">`
         + (titulos[nombre] ? `<span class="caja-titulo">${escapar(titulos[nombre])}</span>` : '')
         + `<span class="caja-nombre">${escapar(nombre)}</span></div>${candado}`
-        + (etiquetaSistema(nombre) ? `<span class="caja-etiqueta">${etiquetaSistema(nombre)}</span>` : '')
+        + (etiquetaSistema(nombre) ? `<span class="caja-etiqueta" title="Paso especial: el bot ya sabe hacerlo">${iconoSistema(nombre)} ${etiquetaSistema(nombre)}</span>` : '')
         + `<span class="caja-tipo">${ETIQUETAS[tipo]}</span>`
         + `<button type="button" class="caja-editar" data-editar title="Editar (o doble clic en la caja)">&#9998;</button></div>`
         + `<div class="caja-mensaje">${estado.message ? escapar(estado.message) : '<span class="caja-vacio">(sin mensaje)</span>'}</div>`

@@ -46,7 +46,7 @@
 
 /* Bolitas de salida: una por fila de la caja. editor.js (alinearSalidas) les pone el "top" de su fila. */
 .drawflow .drawflow-node .outputs { position: absolute; top: 0; right: 0; height: 100%; }
-.drawflow .drawflow-node .output { position: absolute; right: -13px; margin: 0; cursor: pointer; background: #fff; border-color: #6c757d; }
+.drawflow .drawflow-node .output { position: absolute; right: -13px; margin: 0; cursor: crosshair; background: #fff; border-color: #6c757d; }
 .drawflow .drawflow-node .output:hover { background: #0d6efd; border-color: #0d6efd; }
 
 /* Menú que aparece al hacer clic en una bolita. */
@@ -95,3 +95,25 @@
 .caja-nombres { display: flex; flex-direction: column; min-width: 0; }
 .caja-titulo { font-weight: 600; overflow-wrap: anywhere; }
 .caja-nombres.con-titulo .caja-nombre { font-weight: 400; font-size: .7rem; color: #6c757d; }
+
+/* Simulador (▶ Probar): chat a la derecha, el lienzo sigue usable. */
+.simulador { --bs-offcanvas-width: 420px; }
+.simulador .offcanvas-header { padding: .5rem .75rem; }
+.simulador .vista-whatsapp-chat { min-height: 0; }
+.simulador .vista-whatsapp-burbuja { align-self: flex-start; }
+.simulador .vista-whatsapp-burbuja.sim-persona { align-self: flex-end; background: #d9fdd3; border-radius: .5rem 0 .5rem .5rem; }
+.simulador .sim-nota { align-self: flex-start; max-width: 92%; font-size: .75rem; color: #54656f; font-style: italic; }
+.simulador .sim-aviso { align-self: center; font-size: .75rem; color: #54656f; background: #fff8c5; border-radius: .4rem; padding: .15rem .5rem; }
+
+/* Caja donde está la conversación del simulador: borde verde y brillo que late (fijo mientras el panel está abierto). */
+.drawflow .drawflow-node.en-simulacion {
+    outline: 4px solid #25d366; outline-offset: 3px; z-index: 5;
+    animation: latido-simulacion 1.2s ease-in-out infinite alternate;
+}
+@keyframes latido-simulacion {
+    from { box-shadow: 0 0 0 0 rgba(37, 211, 102, .25), 0 0 12px 2px rgba(37, 211, 102, .35); }
+    to   { box-shadow: 0 0 0 10px rgba(37, 211, 102, .15), 0 0 32px 10px rgba(37, 211, 102, .6); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .drawflow .drawflow-node.en-simulacion { animation: none; box-shadow: 0 0 24px 8px rgba(37, 211, 102, .55); }
+}

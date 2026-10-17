@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    agregarEstado, aplicarEdicion, contenidoParaGuardar, crearConectado, eliminarEstado, enlazarPareja, fijarDestino, fijarTitulo,
-    esNuevo, identificadorPara, moverEstado, opcionesDe, tituloDe,
+    agregarEstado, aplicarEdicion, conectarYNombrar, contenidoParaGuardar, crearConectado, eliminarEstado, enlazarPareja, fijarDestino, fijarTitulo,
+    esNuevo, identificadorPara, moverEstado, opcionesDe, sincronizarHijos, tituloDe,
     nombreDesdeTexto, nombrePatron, plantilla, plantillaSistema, siguienteClave, sistemaDisponibles, sugerirNombre, validarNombre,
 } from '../../resources/js/flujo/modelo.js';
-import { clasificar, flujoADrawflow } from '../../resources/js/flujo/flujo-a-drawflow.js';
-import { NOMBRES, describirSistema } from '../../resources/js/flujo/estados-sistema.js';
+import { clasificar, flujoADrawflow, salidas } from '../../resources/js/flujo/flujo-a-drawflow.js';
+import { NOMBRES, describirSistema, etiquetaSistema, iconoSistema } from '../../resources/js/flujo/estados-sistema.js';
 
 const modeloInicial = () => ({
     flujo: { start: { message: 'Hola', next_state: 'end' }, end: { message: 'Fin' } },
@@ -285,8 +285,8 @@ test('nombrePatron arma y valida el nombre: prefijo/sufijo + parte en snake_case
 
 test('describirSistema: fijos y por patrón; null si no es del sistema', () => {
     assert.match(describirSistema('end_or_menu'), /algo más/);
-    assert.match(describirSistema('derivar_notificaciones'), /asesor/);
-    assert.match(describirSistema('deposito_pedir_corte'), /jurisdicción/);
+    assert.match(describirSistema('derivar_notificaciones'), /área/);
+    assert.match(describirSistema('deposito_pedir_corte'), /lista/);
     assert.match(describirSistema('esperando_agente_quejas'), /asesor/);
     assert.equal(describirSistema('menu_tramites'), null);
     for (const nombre of NOMBRES) assert.ok(describirSistema(nombre), `falta la descripción de ${nombre}`);
@@ -399,4 +399,136 @@ test('contenidoParaGuardar guarda la lista de nuevos en _editor (fuera de FLUJO)
     assert.deepEqual(contenidoParaGuardar(original, modelo)._editor, { nuevos: ['paso_1'] });
     modelo.nuevos = [];
     assert.ok(!('_editor' in contenidoParaGuardar(original, modelo)));
+});
+
+// --- Conectar con una caja existente: toma el nombre de la opción solo si es nueva y nadie más llega ---
+
+/** start con opciones "Consultar trámite" (sin conectar) y "Salir" (→ end); una caja nueva suelta "paso_1". */
+const conCajaNueva = () => ({
+    flujo: {
+        start: { message: '', options: { 1: { text: 'Consultar trámite', next_state: null }, 2: { text: 'Salir', next_state: 'end' } } },
+        paso_1: { message: '', next_state: null },
+        end: { message: '' },
+    },
+    layout: {},
+    titulos: {},
+    nuevos: ['paso_1'],
+});
+
+test('caja nueva y sin otras entradas: toma el nombre visible y el identificador de la opción', () => {
+    const modelo = conCajaNueva();
+    const r = conectarYNombrar(modelo, 'start', 0, 'paso_1');
+
+    assert.deepEqual(r, { destino: 'consultar_tramite', renombrado: true });
+    assert.equal(modelo.flujo.start.options['1'].next_state, 'consultar_tramite');
+    assert.ok(!('paso_1' in modelo.flujo));
+    assert.equal(tituloDe(modelo, 'consultar_tramite'), 'Consultar trámite');
+    assert.ok(esNuevo(modelo, 'consultar_tramite'), 'sigue siendo nueva');
+});
+
+test('si otra opción ya llega a la caja, conserva su nombre', () => {
+    const modelo = conCajaNueva();
+    modelo.flujo.start.options['2'].next_state = 'paso_1';            // "Salir" ya llega a paso_1
+    const r = conectarYNombrar(modelo, 'start', 0, 'paso_1');
+
+    assert.deepEqual(r, { destino: 'paso_1', renombrado: false });
+    assert.equal(modelo.flujo.start.options['1'].next_state, 'paso_1', 'pero sí se conecta');
+});
+
+test('estados del sistema e importados (no nuevos) nunca se renombran', () => {
+    const modelo = conCajaNueva();
+    modelo.flujo.start.options['2'].next_state = null;
+    assert.deepEqual(conectarYNombrar(modelo, 'start', 1, 'end'), { destino: 'end', renombrado: false }, 'end es del sistema');
+
+    modelo.nuevos = [];                                                 // paso_1 como si fuera importado
+    assert.deepEqual(conectarYNombrar(modelo, 'start', 0, 'paso_1'), { destino: 'paso_1', renombrado: false });
+});
+
+test('una salida sin texto (opción vacía o «sigue») no renombra', () => {
+    const modelo = conCajaNueva();
+    modelo.flujo.otro = { message: '', next_state: null };
+    assert.deepEqual(conectarYNombrar(modelo, 'otro', 0, 'paso_1'), { destino: 'paso_1', renombrado: false });
+});
+
+// --- Cambiar el texto de una opción actualiza el nombre de su caja hija ---
+
+/** start con "Opción 1" y "Opción 2" sin conectar; desde cada una se crea su caja (nombre = texto de la opción). */
+const conHijos = () => {
+    const modelo = {
+        flujo: { start: { message: '', options: { 1: { text: 'Opción 1', next_state: null }, 2: { text: 'Opción 2', next_state: null } } } },
+        layout: { start: { x: 0, y: 0 } },
+        titulos: {},
+        nuevos: [],
+    };
+    crearConectado(modelo, 'start', 0, { tipo: 'paso' });   // opcion_1
+    crearConectado(modelo, 'start', 1, { tipo: 'paso' });   // opcion_2
+    return modelo;
+};
+
+/** Edita los textos de las opciones de start como lo hace el modal y sincroniza los hijos. */
+const editarOpciones = (modelo, textos) => {
+    const antes = salidas(modelo.flujo.start);
+    const filas = opcionesDe(modelo.flujo.start).map((fila, i) => ({ ...fila, text: textos[i] ?? fila.text }));
+    aplicarEdicion(modelo, 'start', { nombre: 'start', message: '', tipo: 'menu', next_state: null, opciones: filas });
+    return sincronizarHijos(modelo, 'start', antes);
+};
+
+test('al cambiar el texto de la opción, la caja hija toma el nombre visible y el identificador nuevos', () => {
+    const modelo = conHijos();
+    const r = editarOpciones(modelo, ['Consultas', 'Opción 2']);
+
+    assert.deepEqual(r, [{ de: 'opcion_1', a: 'consultas' }], 'solo la que cambió');
+    assert.equal(modelo.flujo.start.options['1'].next_state, 'consultas');
+    assert.equal(tituloDe(modelo, 'consultas'), 'Consultas');
+    assert.equal(tituloDe(modelo, 'opcion_2'), 'Opción 2');
+});
+
+test('no pisa un nombre visible puesto a mano', () => {
+    const modelo = conHijos();
+    fijarTitulo(modelo, 'opcion_1', 'Pagos en línea');
+    assert.deepEqual(editarOpciones(modelo, ['Consultas']), []);
+    assert.equal(tituloDe(modelo, 'opcion_1'), 'Pagos en línea');
+});
+
+test('no toca cajas compartidas, importadas ni del sistema', () => {
+    const compartida = conHijos();
+    compartida.flujo.start.options['2'].next_state = 'opcion_1';      // las dos opciones llevan a opcion_1
+    assert.deepEqual(editarOpciones(compartida, ['Consultas']), []);
+
+    const importada = conHijos();
+    importada.nuevos = [];
+    assert.deepEqual(editarOpciones(importada, ['Consultas']), []);
+
+    const sistema = conHijos();
+    sistema.flujo.end = { message: '' };
+    sistema.flujo.start.options['1'].next_state = 'end';
+    sistema.titulos = {};
+    assert.deepEqual(editarOpciones(sistema, ['Fin']), []);
+});
+
+test('una caja creada desde una opción sin texto toma el texto cuando se escribe', () => {
+    const modelo = { flujo: { start: { message: '', options: { 1: { text: '', next_state: null } } } }, layout: {}, titulos: {}, nuevos: [] };
+    crearConectado(modelo, 'start', 0, { tipo: 'menu' });               // sin texto → menu_1, sin nombre visible
+    assert.deepEqual(editarOpciones(modelo, ['Pagos']), [{ de: 'menu_1', a: 'pagos' }]);
+    assert.equal(tituloDe(modelo, 'pagos'), 'Pagos');
+});
+
+test('pasos especiales: nombre amigable e icono para todos (fijos y por patrón); null si no lo es', () => {
+    assert.equal(etiquetaSistema('start'), 'Bienvenida');
+    assert.equal(etiquetaSistema('end'), 'Despedida');
+    assert.equal(etiquetaSistema('esperando_agente'), 'Pasar con un asesor');
+    assert.equal(etiquetaSistema('derivar_quejas'), 'Derivar a un área');
+    assert.equal(etiquetaSistema('deposito_pedir_corte'), 'Pedir que elija de la lista');
+    assert.equal(etiquetaSistema('esperando_agente_quejas'), 'Esperar asesor de un área');
+    assert.equal(etiquetaSistema('menu_tramites'), null);
+    for (const nombre of NOMBRES) {
+        assert.ok(etiquetaSistema(nombre), `falta el nombre amigable de ${nombre}`);
+        assert.ok(iconoSistema(nombre), `falta el icono de ${nombre}`);
+    }
+});
+
+test('los textos que ve la persona usan términos generales (nada de un cliente en particular)', () => {
+    const textos = [...NOMBRES, 'derivar_x', 'x_pedir_corte', 'x_confirmar', 'esperando_agente_x']
+        .flatMap((n) => [etiquetaSistema(n), describirSistema(n)]).join(' ');
+    assert.doesNotMatch(textos, /corte|jurisdicci|judicial|ONPE|elecci[oó]n electoral/i);
 });

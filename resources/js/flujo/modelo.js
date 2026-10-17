@@ -361,6 +361,58 @@ export function crearConectado(modelo, origen, indice, nuevo) {
     return nombre;
 }
 
+/**
+ * Conecta la salida nº `indice` de `origen` con `destino` (arrastrando o desde el menú) y, si corresponde,
+ * la caja destino toma el nombre de la opción: nombre visible = texto de la opción, identificador = su slug.
+ * Solo si el destino es nuevo (creado en el editor, sin publicar), no es del sistema y esta es la única
+ * salida que llega a él; si no, conserva su nombre (start, importados o estados compartidos no se tocan).
+ * Devuelve { destino, renombrado } con el identificador final del destino.
+ */
+export function conectarYNombrar(modelo, origen, indice, destino) {
+    fijarDestino(modelo, origen, indice, destino);
+
+    const texto = salidas(modelo.flujo[origen])[indice]?.texto ?? '';
+    const entradas = Object.values(modelo.flujo)
+        .flatMap((estado) => salidas(estado))
+        .filter((s) => s.destino === destino).length;
+    if (!texto || !esNuevo(modelo, destino) || esEstadoSistema(destino) || entradas > 1) {
+        return { destino, renombrado: false };
+    }
+
+    const id = identificadorPara(modelo.flujo, texto, destino);
+    if (!id) return { destino, renombrado: false };
+    if (id !== destino) renombrarEstado(modelo, destino, id); // también mueve el título y la marca de "nuevo"
+    fijarTitulo(modelo, id, texto);
+    return { destino: id, renombrado: true };
+}
+
+/**
+ * Tras editar un estado: si cambió el texto de una opción, su caja destino toma el texto nuevo (nombre visible)
+ * y su slug (identificador), siempre que siga llamándose como el texto viejo (o no tenga nombre visible: no se
+ * pisa un nombre puesto a mano), sea nueva, no sea del sistema y esta sea la única salida que llega a ella.
+ * `antes` = salidas(estado) antes de editar. Devuelve [{ de, a }] con los renombrados.
+ */
+export function sincronizarHijos(modelo, nombre, antes) {
+    const renombrados = [];
+
+    for (const { destino, texto } of salidas(modelo.flujo[nombre])) {
+        if (destino == null || !(destino in modelo.flujo) || !texto) continue;
+        const previa = antes.find((s) => s.destino === destino);
+        if (!previa || previa.texto === texto) continue;                                  // el texto no cambió
+        if ((modelo.titulos?.[destino] ?? '') !== (previa.texto ?? '')) continue;           // nombre puesto a mano
+        if (!esNuevo(modelo, destino) || esEstadoSistema(destino)) continue;
+        const entradas = Object.values(modelo.flujo).flatMap((e) => salidas(e)).filter((s) => s.destino === destino).length;
+        if (entradas > 1) continue;                                                       // caja compartida
+
+        const id = identificadorPara(modelo.flujo, texto, destino) || destino;
+        if (id !== destino) renombrarEstado(modelo, destino, id);
+        fijarTitulo(modelo, id, texto);
+        renombrados.push({ de: destino, a: id });
+    }
+
+    return renombrados;
+}
+
 /** Siguiente número libre para una opción nueva de menú. */
 export function siguienteClave(claves) {
     const numeros = claves.filter((c) => /^\d+$/.test(c)).map(Number);
