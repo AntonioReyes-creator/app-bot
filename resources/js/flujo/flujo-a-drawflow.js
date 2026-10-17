@@ -11,10 +11,12 @@ const MARGEN = 40;
 
 const ETIQUETAS = { menu: 'Menú', paso: 'Paso', final: 'Final' };
 
-/** menu (tiene opciones), paso (solo next_state) o final (ninguno de los dos). */
+/**
+ * menu (tiene opciones), paso (tiene next_state, aunque esté sin conectar: null) o final.
+ */
 export function clasificar(estado) {
     if (estado.options && Object.keys(estado.options).length > 0) return 'menu';
-    if (estado.next_state) return 'paso';
+    if ('next_state' in estado) return 'paso';
     return 'final';
 }
 
@@ -30,7 +32,7 @@ export function salidas(estado) {
         oculta: !/^\d+$/.test(clave), // el motor no muestra en el menú las claves no numéricas
     }));
 
-    if (estado.next_state) {
+    if ('next_state' in estado) {
         lista.push({ clave: null, texto: '', destino: estado.next_state, oculta: false });
     }
 
@@ -48,7 +50,7 @@ export function distancias(flujo) {
     while (cola.length > 0) {
         const actual = cola.shift();
         for (const { destino } of salidas(flujo[actual])) {
-            if (destino in flujo && !distancia.has(destino)) {
+            if (destino != null && destino in flujo && !distancia.has(destino)) {
                 distancia.set(destino, distancia.get(actual) + 1);
                 cola.push(destino);
             }
@@ -82,9 +84,10 @@ export function calcularPosiciones(flujo, layout = {}) {
 }
 
 /**
- * Devuelve { datos, resumen }:
+ * Devuelve { datos, resumen, nombrePorId }:
  *  - datos: lo que recibe editor.import() de Drawflow.
  *  - resumen: { total, alcanzables, sinConexion }.
+ *  - nombrePorId: Map id de Drawflow ("1") → nombre del estado; los ids cambian en cada dibujo.
  */
 export function flujoADrawflow(flujo, layout = {}) {
     const nombres = Object.keys(flujo);
@@ -136,6 +139,7 @@ export function flujoADrawflow(flujo, layout = {}) {
             alcanzables: alcanzables.size,
             sinConexion: nombres.length - alcanzables.size,
         },
+        nombrePorId: new Map([...idDe].map(([nombre, id]) => [id, nombre])),
     };
 }
 
@@ -143,15 +147,18 @@ function htmlCaja(nombre, estado, tipo, sistema, lista, flujo) {
     const candado = sistema ? '<span class="caja-candado" title="Estado del sistema: el nombre no se puede cambiar">&#128274;</span>' : '';
 
     const filas = lista.map(({ clave, texto, destino, oculta }) => {
-        const roto = !(destino in flujo);
+        const sinConectar = destino == null;
+        const roto = !sinConectar && !(destino in flujo);
         const etiqueta = clave === null ? '<span class="caja-clave">sigue</span>' : `<span class="caja-clave">${escapar(clave)}</span> ${escapar(texto)}`;
-        return `<li class="${oculta ? 'opcion-oculta' : ''}${roto ? ' destino-roto' : ''}">`
+        const destinoHtml = sinConectar ? 'sin conectar' : `&rarr; ${escapar(destino)}${roto ? ' &#9888; no existe' : ''}`;
+        return `<li class="${oculta ? 'opcion-oculta' : ''}${roto ? ' destino-roto' : ''}${sinConectar ? ' destino-pendiente' : ''}">`
             + `${etiqueta}${oculta ? ' <em>(oculta)</em>' : ''}`
-            + `<span class="caja-destino">&rarr; ${escapar(destino ?? '?')}${roto ? ' &#9888; no existe' : ''}</span></li>`;
+            + `<span class="caja-destino">${destinoHtml}</span></li>`;
     });
 
     return `<div class="caja">`
-        + `<div class="caja-cabecera"><span class="caja-nombre">${escapar(nombre)}</span>${candado}<span class="caja-tipo">${ETIQUETAS[tipo]}</span></div>`
+        + `<div class="caja-cabecera"><span class="caja-nombre">${escapar(nombre)}</span>${candado}<span class="caja-tipo">${ETIQUETAS[tipo]}</span>`
+        + `<button type="button" class="caja-editar" data-editar title="Editar (o doble clic en la caja)">&#9998;</button></div>`
         + `<div class="caja-mensaje">${escapar(estado.message ?? '')}</div>`
         + (filas.length ? `<ul class="caja-salidas">${filas.join('')}</ul>` : '')
         + `</div>`;

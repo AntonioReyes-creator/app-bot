@@ -3,7 +3,7 @@
 
 /* Lienzo del editor: ocupa el alto de la ventana menos la barra y la cabecera. */
 .lienzo {
-    height: calc(100vh - 160px);
+    height: calc(100vh - 205px);
     background-color: #fff;
     background-image: radial-gradient(#dee2e6 1px, transparent 1px);
     background-size: 20px 20px;
@@ -41,3 +41,11 @@
 .caja-destino { margin-left: auto; font-family: var(--bs-font-monospace); color: #6c757d; }
 .opcion-oculta { color: #6c757d; }
 .destino-roto .caja-destino { color: #dc3545; }
+.destino-pendiente .caja-destino { color: #fd7e14; font-style: italic; }
+
+/* Hasta el paso 2b no se pueden crear flechas a mano: los puntos de salida no responden al ratón. */
+.lienzo.sin-conectar .drawflow .output { pointer-events: none; }
+
+/* Botón ✎ de cada caja (abre el modal de edición, igual que el doble clic). */
+.caja-editar { border: 0; background: none; padding: 0 .15rem; line-height: 1; color: #6c757d; cursor: pointer; }
+.caja-editar:hover { color: #0d6efd; }

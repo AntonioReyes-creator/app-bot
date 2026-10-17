@@ -1,9 +1,10 @@
 // Estados cuyo nombre está escrito a mano en WhatsAppController.php del proyecto existente
 // (docs/PLAN.md §4). El editor no debe permitir renombrarlos.
-const NOMBRES = [
+export const NOMBRES = [
     'start',
     'end',
     'end_or_menu',
+    'esperando_agente',
     'mas_informacion',
     'seleccionar_departamento',
     'encuesta_inicio',
