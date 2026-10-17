@@ -1,15 +1,20 @@
 import Drawflow from 'drawflow';
+import { flujoADrawflow } from './flujo/flujo-a-drawflow.js';
 
-// Página del editor (flujos/edit.blade.php). Por ahora solo prepara el lienzo;
-// dibujar las cajas a partir del FLUJO es el paso 1f.
+// Página del editor (flujos/edit.blade.php): dibuja el FLUJO guardado en el lienzo.
 const contenedor = document.getElementById('lienzo');
 
 if (contenedor) {
-    const datos = JSON.parse(document.getElementById('datos-flujo').textContent);
-    const estados = Object.keys(datos.contenido.FLUJO);
+    const { contenido, layout } = JSON.parse(document.getElementById('datos-flujo').textContent);
+    const { datos, resumen } = flujoADrawflow(contenido.FLUJO, layout ?? {});
 
     const editor = new Drawflow(contenedor);
+    // Solo lectura hasta la etapa 2 (guardar): se puede desplazar y hacer zoom, no mover ni conectar.
+    editor.editor_mode = 'view';
     editor.start();
+    editor.import(datos);
 
-    document.getElementById('resumen').textContent = `${estados.length} estados`;
+    let texto = `${resumen.total} estados · ${resumen.alcanzables} alcanzables desde start`;
+    if (resumen.sinConexion > 0) texto += ` · ${resumen.sinConexion} sin conexión`;
+    document.getElementById('resumen').textContent = texto;
 }
