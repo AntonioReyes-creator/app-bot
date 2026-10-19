@@ -135,8 +135,34 @@ class FlujoController extends Controller
     }
 
     /**
-     * "Poder Judicial" → "poder-judicial"; si ya existe, "poder-judicial-2", "-3"…
+     * Copia el flujo (lo último guardado: pasos, nombres visibles y posiciones) como uno NUEVO en borrador.
+     * Nombre: «Copia de X»; si ya existe, «Copia de X (2)», «(3)»…
      */
+    public function duplicar(Flujo $flujo): RedirectResponse
+    {
+        $version = $flujo->ultimaVersion;
+        $base = 'Copia de ' . mb_substr($flujo->nombre, 0, 80);
+        $nombre = $base;
+        for ($n = 2; Flujo::where('nombre', $nombre)->exists(); $n++) {
+            $nombre = "{$base} ({$n})";
+        }
+
+        $copia = DB::transaction(function () use ($nombre, $version) {
+            $copia = Flujo::create(['nombre' => $nombre, 'slug' => $this->slugUnico($nombre)]);
+            // Tal cual se guardó (como objetos: {} no se convierte en []).
+            $copia->versiones()->create([
+                'numero' => 1,
+                'estado' => 'borrador',
+                'contenido' => json_decode((string) $version->getRawOriginal('contenido')),
+                'layout' => json_decode((string) $version->getRawOriginal('layout')),
+            ]);
+
+            return $copia;
+        });
+
+        return redirect()->route('flujos.edit', $copia);
+    }
+
     /**
      * Descarga lo guardado como «slug.json»: { "FLUJO": …, "_editor": { titulos, layout } }.
      * El bot existente solo lee FLUJO (FlujoBotService exige la clave FLUJO e ignora las demás), así que el archivo
@@ -236,6 +262,9 @@ class FlujoController extends Controller
             ->with('estado', "«{$nombre}» importado ({$pasos} pasos).");
     }
 
+    /**
+     * "Poder Judicial" → "poder-judicial"; si ya existe, "poder-judicial-2", "-3"…
+     */
     private function slugUnico(string $nombre): string
     {
         $base = Str::slug($nombre) ?: 'flujo';

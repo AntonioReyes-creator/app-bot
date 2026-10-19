@@ -9,7 +9,7 @@ import { TIPOS, armarDocumento, documentoEnMarkdown, fichaDePaso, resumirDocumen
 import { COMANDOS_DEL_MOTOR, estadoDelDiseno, pareceQuePideDatos } from './flujo/revision.js';
 import { EMOJIS, MAXIMO_CARACTERES, envolver, formatearWhatsApp, insertar, marcarLineas, mensajeDelBot } from './flujo/whatsapp.js';
 import {
-    agregarPasoEspecial, aplicarEdicion, conectarYNombrar, contenidoParaGuardar, crearConectado, eliminarEstado, enlazarPareja, fijarDestino,
+    agregarPasoEspecial, aplicarEdicion, copiarEstados, pegarEstados, conectarYNombrar, contenidoParaGuardar, crearConectado, eliminarEstado, enlazarPareja, fijarDestino,
     esNuevo, identificadorPara, moverEstado, nombrePatron, sincronizarHijos, tituloDe,
     ejemploMensaje, opcionesDe, siguienteClave, sistemaDisponibles,
 } from './flujo/modelo.js';
@@ -75,6 +75,7 @@ if (contenedor) {
         pintarDiseno();
         marcarEstadoSimulado(); // al redibujar se crean cajas nuevas: se vuelve a marcar la del simulador
         if (documentoAbierto) pintarDocumento(); // el documento sigue al modelo
+        pintarSeleccion(); // las cajas son nuevas: se vuelven a marcar las seleccionadas
     }
 
     /**
@@ -196,6 +197,7 @@ if (contenedor) {
         const antes = JSON.stringify(tiposDeDibujo(modelo.flujo, modelo.layout, cruzan, { copias: mostrarCopias }));
         // Se lee la posición de la caja en pantalla: Drawflow guarda en sus datos (pos_x/pos_y) la posición
         // con un paso de más (resta el desplazamiento dos veces al mover), y la caja "saltaba" al reabrir.
+        guardarGrupo(); // si se movía un grupo, las demás cajas también
         const caja = document.getElementById('node-' + id);
         const copia = copiaPorId.get(String(id));
         if (copia) {
@@ -1271,6 +1273,188 @@ if (contenedor) {
         enlace.click();
         URL.revokeObjectURL(enlace.href);
     });
+
+    // --- Selección múltiple y mover el lienzo.
+    // Arrastrar el fondo dibuja un rectángulo azul que selecciona cajas; el lienzo se mueve con la rueda (Shift: a los
+    // lados) o arrastrando con la rueda apretada. Las seleccionadas se mueven juntas, Supr las borra y Ctrl+C / Ctrl+V
+    // las copia (también a otro flujo). Se escucha en captura para que Drawflow no mueva el lienzo al pulsar el fondo.
+    const marco = document.querySelector('.lienzo');
+    const rectangulo = Object.assign(document.createElement('div'), { className: 'seleccion-rectangulo d-none' });
+    marco.append(rectangulo);
+    let seleccion = new Set();   // nombres de los estados seleccionados (las copias de vista no se seleccionan)
+    let arrastreRect = null;     // { x0, y0 }: inicio del rectángulo, relativo al marco
+    let paneo = null;            // arrastre con la rueda apretada: { x, y, cx, cy }
+    let grupo = null;            // arrastre de una caja seleccionada: { nodo, x0, y0, otros: [{ caja, x, y }] }
+
+    const esFondo = (el) => el === contenedor || el === editor.precanvas;
+    const cajaDe = (nombre) => {
+        const id = [...nombrePorId].find(([, n]) => n === nombre)?.[0];
+        return id ? document.getElementById('node-' + id) : null;
+    };
+
+    /** Marca en azul las seleccionadas (tras cada dibujo las cajas son nuevas). Quita las que ya no existen. */
+    function pintarSeleccion() {
+        contenedor.querySelectorAll('.drawflow-node.en-seleccion').forEach((c) => c.classList.remove('en-seleccion'));
+        for (const nombre of [...seleccion]) {
+            const caja = cajaDe(nombre);
+            if (caja) caja.classList.add('en-seleccion');
+            else seleccion.delete(nombre);
+        }
+    }
+
+    function fijarSeleccion(nombres) {
+        seleccion = new Set(nombres);
+        pintarSeleccion();
+    }
+
+    /** Como hace Drawflow al pulsar el fondo: nada queda seleccionado. */
+    function quitarSeleccionDeDrawflow() {
+        if (editor.node_selected) {
+            editor.node_selected.classList.remove('selected');
+            editor.node_selected = null;
+            editor.dispatch('nodeUnselected', true);
+        }
+        if (editor.connection_selected) {
+            editor.connection_selected.classList.remove('selected');
+            editor.connection_selected = null;
+        }
+    }
+
+    contenedor.addEventListener('mousedown', (evento) => {
+        // Rueda apretada: mover el lienzo.
+        if (evento.button === 1) {
+            evento.preventDefault();
+            evento.stopImmediatePropagation();
+            paneo = { x: evento.clientX, y: evento.clientY, cx: editor.canvas_x, cy: editor.canvas_y };
+            return;
+        }
+        if (evento.button !== 0) return;
+
+        // Clic en una caja: si no es de la selección, la selección se deshace; si lo es, se arrastra el grupo.
+        const nodo = evento.target.closest('.drawflow-node');
+        if (nodo) {
+            const nombre = nombrePorId.get(nodo.id.slice(5));
+            if (!seleccion.has(nombre)) fijarSeleccion([]);
+            else if (seleccion.size > 1 && !evento.target.closest('.output, .input, button')) {
+                const otros = [...seleccion].map(cajaDe).filter((c) => c && c !== nodo)
+                    .map((caja) => ({ caja, x: parseFloat(caja.style.left), y: parseFloat(caja.style.top) }));
+                grupo = { nodo, x0: parseFloat(nodo.style.left), y0: parseFloat(nodo.style.top), otros };
+            }
+            return;
+        }
+        if (!esFondo(evento.target)) return; // líneas, bolitas…: los maneja Drawflow
+
+        // Fondo: empieza el rectángulo (Drawflow no mueve el lienzo).
+        evento.preventDefault();
+        evento.stopImmediatePropagation();
+        quitarSeleccionDeDrawflow();
+        cerrarMenuSalida();
+        contenedor.focus({ preventScroll: true }); // para Supr / Ctrl+C / Ctrl+V
+        const r = marco.getBoundingClientRect();
+        arrastreRect = { x0: evento.clientX - r.left, y0: evento.clientY - r.top };
+        Object.assign(rectangulo.style, { left: `${arrastreRect.x0}px`, top: `${arrastreRect.y0}px`, width: '0px', height: '0px' });
+        rectangulo.classList.remove('d-none');
+    }, true);
+
+    document.addEventListener('mousemove', (evento) => {
+        if (paneo) {
+            moverVista(paneo.cx + evento.clientX - paneo.x, paneo.cy + evento.clientY - paneo.y);
+        } else if (arrastreRect) {
+            const r = marco.getBoundingClientRect();
+            const x = evento.clientX - r.left;
+            const y = evento.clientY - r.top;
+            Object.assign(rectangulo.style, {
+                left: `${Math.min(x, arrastreRect.x0)}px`, top: `${Math.min(y, arrastreRect.y0)}px`,
+                width: `${Math.abs(x - arrastreRect.x0)}px`, height: `${Math.abs(y - arrastreRect.y0)}px`,
+            });
+        } else if (grupo && editor.drag) {
+            // Drawflow mueve la caja pulsada; las demás seleccionadas la siguen la misma distancia.
+            const dx = parseFloat(grupo.nodo.style.left) - grupo.x0;
+            const dy = parseFloat(grupo.nodo.style.top) - grupo.y0;
+            for (const otro of grupo.otros) {
+                otro.caja.style.left = `${otro.x + dx}px`;
+                otro.caja.style.top = `${otro.y + dy}px`;
+                editor.updateConnectionNodes(otro.caja.id);
+            }
+        }
+    });
+
+    /** Guarda en el modelo la posición de las demás cajas del grupo (antes de que nodeMoved redibuje). */
+    function guardarGrupo() {
+        for (const { caja } of grupo?.otros ?? []) {
+            const nombre = nombrePorId.get(caja.id.slice(5));
+            if (nombre) moverEstado(modelo, nombre, parseFloat(caja.style.left), parseFloat(caja.style.top));
+        }
+    }
+
+    document.addEventListener('mouseup', () => {
+        if (paneo) paneo = null;
+        if (grupo) grupo = null; // su posición ya se guardó en nodeMoved
+        if (!arrastreRect) return;
+        const r = rectangulo.getBoundingClientRect();
+        rectangulo.classList.add('d-none');
+        arrastreRect = null;
+        if (r.width < 4 && r.height < 4) return fijarSeleccion([]); // un clic en el fondo deshace la selección
+        const tocadas = [...contenedor.querySelectorAll('.drawflow-node:not(.copia)')].filter((caja) => {
+            const c = caja.getBoundingClientRect();
+            return c.left < r.right && c.right > r.left && c.top < r.bottom && c.bottom > r.top;
+        });
+        fijarSeleccion(tocadas.map((caja) => nombrePorId.get(caja.id.slice(5))).filter(Boolean));
+    });
+
+    // Rueda: mover el lienzo (Ctrl + rueda sigue siendo zoom, lo hace Drawflow).
+    contenedor.addEventListener('wheel', (evento) => {
+        if (evento.ctrlKey) return;
+        evento.preventDefault();
+        const dx = evento.shiftKey ? evento.deltaY : evento.deltaX;
+        const dy = evento.shiftKey ? 0 : evento.deltaY;
+        moverVista(editor.canvas_x - dx, editor.canvas_y - dy);
+    }, { passive: false });
+
+    // Teclado con cajas seleccionadas: Supr borra, Ctrl+C copia, Ctrl+V pega, Esc deshace la selección.
+    const PORTAPAPELES = 'app-bot.portapapeles';
+    let portapapeles = null; // por si el navegador no deja guardar
+    const leerPortapapeles = () => {
+        try { return JSON.parse(localStorage.getItem(PORTAPAPELES)) ?? portapapeles; } catch { return portapapeles; }
+    };
+
+    document.addEventListener('keydown', (evento) => {
+        if (evento.target.closest?.('input, textarea, select, [contenteditable]') || document.querySelector('.modal.show')) return;
+        const ctrl = evento.ctrlKey || evento.metaKey;
+        const tecla = evento.key.toLowerCase();
+        // Sin selección múltiple, Ctrl+C copia la caja que Drawflow tenga seleccionada.
+        const elegidas = seleccion.size ? [...seleccion]
+            : editor.node_selected ? [nombrePorId.get(editor.node_selected.id.slice(5))].filter(Boolean) : [];
+
+        if (evento.key === 'Escape' && seleccion.size) {
+            fijarSeleccion([]);
+        } else if (evento.key === 'Delete' && seleccion.size) {
+            evento.preventDefault();
+            evento.stopImmediatePropagation(); // Drawflow no borra además su caja
+            const borrables = [...seleccion].filter((n) => n !== 'start');
+            borrables.forEach((n) => eliminarEstado(modelo, n));
+            fijarSeleccion([]);
+            marcarCambios();
+            dibujar();
+            avisar(`${borrables.length === 1 ? '1 paso borrado' : `${borrables.length} pasos borrados`}`
+                + `${borrables.length < elegidas.length ? ' (la Bienvenida no se borra)' : ''}.`, 'success');
+        } else if (ctrl && tecla === 'c' && elegidas.length) {
+            evento.preventDefault();
+            portapapeles = copiarEstados(modelo, elegidas);
+            try { localStorage.setItem(PORTAPAPELES, JSON.stringify(portapapeles)); } catch { /* queda en memoria */ }
+            avisar(`${elegidas.length === 1 ? '1 paso copiado' : `${elegidas.length} pasos copiados`}. Pégalos con Ctrl+V.`, 'success');
+        } else if (ctrl && tecla === 'v') {
+            const copia = leerPortapapeles();
+            if (!copia?.estados || !Object.keys(copia.estados).length) return;
+            evento.preventDefault();
+            const centro = centroVisible();
+            const creados = pegarEstados(modelo, copia, { x: centro.x - 140, y: centro.y - 60 });
+            marcarCambios();
+            dibujar();
+            fijarSeleccion(creados);
+            avisar(creados.length ? `${creados.length === 1 ? '1 paso pegado' : `${creados.length} pasos pegados`}.` : 'Esos pasos especiales ya están en el flujo.', 'success');
+        }
+    }, true);
 
     dibujar();
 

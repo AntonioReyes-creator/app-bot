@@ -40,7 +40,7 @@
                 title="Chatear con el bot como si fueras un cliente">&#9654; Probar</button>
         <span id="aviso" class="badge text-bg-danger d-none" role="status"></span>
         <span class="text-body-secondary small ms-auto">
-            <strong>Doble clic</strong>: editar · <strong>arrastra</strong> una bolita: conectar · <strong>clic derecho</strong> en ella: más · <kbd>Supr</kbd>: borrar · <kbd>Ctrl</kbd>+rueda: zoom
+            <strong>Arrastra el fondo</strong>: seleccionar · <strong>rueda</strong>: mover · <kbd>Ctrl</kbd>+rueda: zoom · <strong>doble clic</strong>: editar · <kbd>Ctrl</kbd>+C/V: copiar
         </span>
     </div>
 

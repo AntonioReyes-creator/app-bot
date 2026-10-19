@@ -68,6 +68,10 @@
                             <a href="{{ route('flujos.edit', $flujo) }}" class="btn btn-sm btn-outline-primary">Editar</a>
                             <a href="{{ route('flujos.exportar', $flujo) }}" class="btn btn-sm btn-outline-secondary"
                                title="Descargar como .json">Exportar</a>
+                            <form method="POST" action="{{ route('flujos.duplicar', $flujo) }}" class="d-inline">
+                                @csrf
+                                <button type="submit" class="btn btn-sm btn-outline-secondary" title="Crear una copia de este flujo">Duplicar</button>
+                            </form>
                             {{-- Borrar es definitivo (también sus versiones): se pide confirmación. --}}
                             <form method="POST" action="{{ route('flujos.destroy', $flujo) }}" class="d-inline"
                                   onsubmit="return confirm(@js('¿Eliminar «' . $flujo->nombre . '»? No se puede deshacer.'))">

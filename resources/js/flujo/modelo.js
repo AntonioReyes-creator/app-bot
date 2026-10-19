@@ -503,6 +503,64 @@ export function siguienteClave(claves) {
     return String(numeros.length ? Math.max(...numeros) + 1 : 1);
 }
 
+// --- Copiar y pegar cajas (selección múltiple). El portapapeles es un objeto plano: sirve entre flujos.
+
+/** Copia los estados (con sus nombres visibles y posiciones) para pegarlos después. */
+export function copiarEstados(modelo, nombres) {
+    const lista = nombres.filter((n) => n in modelo.flujo);
+    return {
+        estados: Object.fromEntries(lista.map((n) => [n, structuredClone(modelo.flujo[n])])),
+        titulos: Object.fromEntries(lista.filter((n) => modelo.titulos?.[n]).map((n) => [n, modelo.titulos[n]])),
+        layout: Object.fromEntries(lista.map((n) => [n, modelo.layout?.[n] ?? { x: 0, y: 0 }])),
+    };
+}
+
+/**
+ * Pega lo copiado con su misma forma, con la esquina de arriba a la izquierda en `posicion`.
+ * - Cajas normales: nombre nuevo (`ver_precios_copia`) y nombre visible «… (copia)».
+ * - Pasos especiales: son únicos; si ya están en el flujo se usa el que hay, si no, se crean.
+ * - Conexiones: entre las copiadas van a las copias; hacia fuera se mantienen si ese paso existe aquí, si no, quedan
+ *   sin conectar.
+ * Devuelve los nombres creados.
+ */
+export function pegarEstados(modelo, copia, posicion) {
+    const ocupados = { ...modelo.flujo };
+    const nuevoDe = new Map();
+    for (const n of Object.keys(copia.estados ?? {})) {
+        if (esEstadoSistema(n)) {
+            nuevoDe.set(n, n in modelo.flujo ? null : n); // null = usar el que ya existe
+        } else {
+            const nombre = nombreLibre(ocupados, nombreDesdeTexto(`${n}_copia`) || 'paso_copia');
+            ocupados[nombre] = true;
+            nuevoDe.set(n, nombre);
+        }
+    }
+    const destino = (d) => (d == null ? null : nuevoDe.has(d) ? (nuevoDe.get(d) ?? d) : (d in modelo.flujo ? d : null));
+
+    const puntos = Object.values(copia.layout ?? {});
+    const minX = Math.min(...puntos.map((p) => p.x));
+    const minY = Math.min(...puntos.map((p) => p.y));
+    const creados = [];
+    for (const [n, original] of Object.entries(copia.estados ?? {})) {
+        const nombre = nuevoDe.get(n);
+        if (!nombre) continue;
+        const estado = structuredClone(original);
+        if ('next_state' in estado) estado.next_state = destino(estado.next_state);
+        for (const opcion of Object.values(estado.options ?? {})) {
+            if (opcion && typeof opcion === 'object') opcion.next_state = destino(opcion.next_state ?? null);
+        }
+        modelo.flujo[nombre] = estado;
+        const p = copia.layout?.[n] ?? { x: minX, y: minY };
+        (modelo.layout ??= {})[nombre] = { x: Math.round(posicion.x + p.x - minX), y: Math.round(posicion.y + p.y - minY) };
+        if (!esEstadoSistema(nombre)) {
+            fijarTitulo(modelo, nombre, copia.titulos?.[n] ? `${copia.titulos[n]} (copia)` : '');
+            (modelo.nuevos ??= []).push(nombre);
+        }
+        creados.push(nombre);
+    }
+    return creados;
+}
+
 /**
  * Borra el estado. Las flechas que llegaban a él quedan apuntando a un nombre que ya no existe
  * (el lienzo las marca y el validador las informará). start no se puede borrar: devuelve false.

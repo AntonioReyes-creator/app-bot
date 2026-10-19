@@ -333,4 +333,24 @@ class FlujoTest extends TestCase
         $exportado = $this->get('/flujos/ida-y-vuelta/exportar')->getContent();
         $this->assertEquals(json_decode($original), json_decode($exportado), 'mismo JSON (también {} y [])');
     }
+
+    public function test_duplicar_crea_una_copia_con_todo_y_no_toca_el_original(): void
+    {
+        $this->post('/flujos', ['nombre' => 'Tienda']);
+        $this->putJson('/flujos/tienda/borrador', [
+            'contenido' => ['FLUJO' => ['start' => ['message' => 'Hola', 'options' => ['1' => ['text' => 'A', 'next_state' => 'end', 'keywords' => ['a']]]], 'end' => ['message' => 'Chau']],
+                '_editor' => ['titulos' => ['start' => 'Inicio']]],
+            'layout' => ['start' => ['x' => 1, 'y' => 2]],
+        ]);
+
+        $this->post('/flujos/tienda/duplicar')->assertRedirect('/flujos/copia-de-tienda/editar');
+        $this->post('/flujos/tienda/duplicar')->assertRedirect('/flujos/copia-de-tienda-2/editar');
+
+        $original = Flujo::where('slug', 'tienda')->sole()->ultimaVersion;
+        $copia = Flujo::where('nombre', 'Copia de Tienda')->sole()->ultimaVersion;
+        $this->assertSame($original->contenido, $copia->contenido);
+        $this->assertSame($original->layout, $copia->layout);
+        $this->assertSame('borrador', $copia->estado);
+        $this->assertSame(['Tienda', 'Copia de Tienda', 'Copia de Tienda (2)'], Flujo::orderBy('id')->pluck('nombre')->all());
+    }
 }
