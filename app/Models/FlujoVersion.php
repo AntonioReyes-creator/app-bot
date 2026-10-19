@@ -17,8 +17,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class FlujoVersion extends Model
 {
     /**
-     * Contenido de un flujo recién creado: el mínimo que el bot entiende (start → end), con los mensajes
-     * vacíos para que el usuario escriba los suyos (el editor muestra un ejemplo en gris).
+     * Contenido de un flujo recién creado: el mínimo que el bot entiende (start → end), con mensajes generales
+     * que el usuario cambia en el editor.
      *
      * @return array{FLUJO: array<string, array<string, string>>}
      */

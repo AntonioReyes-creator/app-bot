@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Flujo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
@@ -240,5 +241,96 @@ class FlujoTest extends TestCase
             ->assertRedirect('/flujos/crear')
             ->assertSessionHasErrors(['nombre' => 'Ya existe un flujo con ese nombre. Usa otro (por ejemplo, añade la fecha o el área).']);
         $this->assertSame(1, Flujo::count());
+    }
+
+    // --- Exportar e importar (etapa 3b / 3d) ---
+
+    public function test_exportar_descarga_el_json_con_flujo_y_datos_del_editor(): void
+    {
+        $this->post('/flujos', ['nombre' => 'Tienda']);
+        $flujo = ['start' => ['message' => "¡Hola! Ñandú\nElige:", 'options' => ['1' => ['text' => 'A', 'next_state' => 'end', 'keywords' => ['ventas']]]],
+            'end' => ['message' => 'Chau']];
+        $this->putJson('/flujos/tienda/borrador', [
+            'contenido' => ['FLUJO' => $flujo, '_editor' => ['titulos' => ['start' => 'Inicio'], 'nuevos' => ['x']]],
+            'layout' => ['start' => ['x' => 1, 'y' => 2]],
+        ])->assertOk();
+
+        $respuesta = $this->get('/flujos/tienda/exportar')->assertOk();
+        $this->assertSame('attachment; filename="tienda.json"', $respuesta->headers->get('Content-Disposition'));
+        $texto = $respuesta->getContent();
+        $this->assertStringNotContainsString("\xEF\xBB\xBF", $texto, 'sin BOM');
+        $this->assertStringContainsString('¡Hola! Ñandú', $texto, 'tildes sin escapar');
+        $this->assertStringContainsString("\n    \"FLUJO\"", $texto, 'legible');
+
+        $json = json_decode($texto, true);
+        $this->assertSame($flujo, $json['FLUJO']);
+        $this->assertSame(['titulos' => ['start' => 'Inicio'], 'layout' => ['start' => ['x' => 1, 'y' => 2]]], $json['_editor'], 'sin «nuevos»');
+    }
+
+    public function test_importar_crea_un_flujo_nuevo_con_todo_tal_cual(): void
+    {
+        $archivo = "\xEF\xBB\xBF" . json_encode([
+            'FLUJO' => [
+                'start' => ['_comentario' => 'no tocar', 'message' => 'Hola', 'options' => ['1' => ['text' => 'Lima', 'departamento' => 'lima', 'next_state' => 'end']]],
+                'end' => ['message' => 'Chau'],
+            ],
+            '_editor' => ['titulos' => ['start' => 'Inicio'], 'nuevos' => ['start'], 'layout' => ['start' => ['x' => 5, 'y' => 6]]],
+        ], JSON_UNESCAPED_UNICODE);
+
+        $this->post('/flujos/importar', ['archivo' => UploadedFile::fake()->createWithContent('Mi bot.json', $archivo)])
+            ->assertRedirect('/flujos')
+            ->assertSessionHas('estado', 'Flujo «Mi bot» importado (2 pasos). Ábrelo con «Editar».');
+
+        $version = Flujo::where('nombre', 'Mi bot')->sole()->ultimaVersion;
+        $this->assertSame('borrador', $version->estado);
+        $this->assertSame('no tocar', $version->contenido['FLUJO']['start']['_comentario']);
+        $this->assertSame('lima', $version->contenido['FLUJO']['start']['options']['1']['departamento']);
+        $this->assertSame(['titulos' => ['start' => 'Inicio']], $version->contenido['_editor'], 'posiciones a su columna; «nuevos» no se importa');
+        $this->assertSame(['start' => ['x' => 5, 'y' => 6]], $version->layout);
+    }
+
+    public function test_importar_rechaza_lo_que_no_es_un_flujo_y_no_crea_nada(): void
+    {
+        $casos = [
+            'no es JSON' => ['{"FLUJO": ', 'no es un JSON válido'],
+            'sin FLUJO' => ['{"pasos": {}}', 'no tiene la clave «FLUJO»'],
+            'FLUJO vacío' => ['{"FLUJO": {}}', 'sin ningún paso'],
+            'paso que no es objeto' => ['{"FLUJO": {"start": "hola"}}', 'El paso «start» no tiene el formato esperado'],
+        ];
+        foreach ($casos as $caso => [$contenido, $mensaje]) {
+            $errores = $this->post('/flujos/importar', ['archivo' => UploadedFile::fake()->createWithContent('x.json', $contenido)],
+                ['Accept' => 'application/json'])->assertUnprocessable()->json('errors.archivo.0');
+            $this->assertStringContainsString($mensaje, $errores, $caso);
+        }
+        $this->assertSame(0, Flujo::count());
+    }
+
+    public function test_importar_con_un_nombre_que_ya_existe_pide_otro(): void
+    {
+        $this->post('/flujos', ['nombre' => 'Bot ventas']);
+        $archivo = UploadedFile::fake()->createWithContent('Bot ventas.json', '{"FLUJO": {"start": {"message": "Hola"}}}');
+
+        $this->from('/flujos')->post('/flujos/importar', ['archivo' => $archivo])->assertSessionHasErrors(['nombre']);
+        $this->post('/flujos/importar', ['archivo' => $archivo, 'nombre' => 'Bot ventas 2'])->assertRedirect('/flujos');
+        $this->assertSame(['Bot ventas', 'Bot ventas 2'], Flujo::orderBy('id')->pluck('nombre')->all());
+    }
+
+    public function test_importar_y_exportar_devuelve_el_mismo_flujo(): void
+    {
+        // Con lo que suele perderse: {} vacío, [] vacío, campos extra, claves no numéricas y comentarios.
+        $original = <<<'JSON'
+        {
+            "FLUJO": {
+                "start": {"message": "*Hola*\nElige:", "options": {"1": {"text": "Uno", "next_state": "menu", "keywords": []}, "salir": {"text": "Salir", "next_state": "end"}}},
+                "menu": {"_comentario": "x", "message": "Lista\n\n{{departamentos}}", "options": {}},
+                "end": {"message": "Chau ¡gracias!"}
+            },
+            "otra_clave": {"a": 1}
+        }
+        JSON;
+        $this->post('/flujos/importar', ['archivo' => UploadedFile::fake()->createWithContent('Ida y vuelta.json', $original)]);
+
+        $exportado = $this->get('/flujos/ida-y-vuelta/exportar')->getContent();
+        $this->assertEquals(json_decode($original), json_decode($exportado), 'mismo JSON (también {} y [])');
     }
 }

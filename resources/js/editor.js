@@ -145,6 +145,25 @@ if (contenedor) {
     }
 
     botonGuardar.addEventListener('click', guardar);
+
+    // --- ⬇ Exportar: descarga lo GUARDADO (el servidor arma el .json). Si hay cambios, se guarda antes; si no se
+    // pudo guardar, no se exporta (el aviso de error ya lo dice). Se exporta aunque haya avisos, pero se dicen.
+    const botonExportar = document.getElementById('exportar');
+    botonExportar.addEventListener('click', async () => {
+        if (hayCambios) {
+            await guardar();
+            if (hayCambios) return;
+        }
+        Object.assign(document.createElement('a'), { href: botonExportar.dataset.url, download: botonExportar.dataset.archivo }).click();
+
+        const { avisos } = resumirDocumento(armarDocumento(modelo.flujo, modelo.titulos).secciones, modelo.flujo);
+        if (avisos.length) {
+            avisar(`Exportado ${botonExportar.dataset.archivo}. Ojo: hay ${avisos.length === 1 ? 'una cosa' : `${avisos.length} cosas`} por revisar. Clic aquí para ${avisos.length === 1 ? 'verla' : 'verlas'}.`,
+                'warning', { ms: 8000, alClic: verAvisos });
+        } else {
+            avisar(`Exportado ${botonExportar.dataset.archivo}.`, 'success');
+        }
+    });
     document.addEventListener('keydown', (evento) => {
         if ((evento.ctrlKey || evento.metaKey) && evento.key.toLowerCase() === 's') {
             evento.preventDefault(); // que el navegador no abra "Guardar página como"

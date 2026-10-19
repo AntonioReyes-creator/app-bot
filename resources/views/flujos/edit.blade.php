@@ -17,6 +17,8 @@
             <span id="guardado" class="text-success small d-none"></span>
             <button type="button" id="guardar" class="btn btn-primary" data-url="{{ route('flujos.guardar', $flujo) }}"
                     title="Guardar el borrador (Ctrl+S)">Guardar</button>
+            <button type="button" id="exportar" class="btn btn-outline-secondary" data-url="{{ route('flujos.exportar', $flujo) }}"
+                    data-archivo="{{ $flujo->slug }}.json" title="Descargar el flujo como .json (guarda antes si hay cambios)">&#11015; Exportar</button>
             <a href="{{ route('flujos.index') }}" class="btn btn-outline-secondary">Volver</a>
         </div>
     </div>
