@@ -32,6 +32,11 @@
                 title="Pasos que el bot ya trae listos">&#129513; Pasos especiales</button>
         <button type="button" class="btn btn-sm btn-outline-dark" id="ordenar"
                 title="Acomodar las cajas en forma de árbol">&#8862; Ordenar</button>
+        {{-- Qué hace arrastrar el fondo: mover la vista o seleccionar cajas con un rectángulo. --}}
+        <div class="btn-group btn-group-sm" role="group" aria-label="Arrastrar el fondo">
+            <button type="button" class="btn btn-outline-secondary active" data-modo="mover" aria-pressed="true" title="Arrastrar el fondo mueve la vista">&#9995; Mover</button>
+            <button type="button" class="btn btn-outline-secondary" data-modo="seleccionar" aria-pressed="false" title="Arrastrar el fondo selecciona cajas">&#11034; Seleccionar</button>
+        </div>
         <button type="button" class="btn btn-sm btn-outline-secondary" id="copias" aria-pressed="false"
                 title="Ver copias de los pasos compartidos junto a cada caja">&#10697; Copias</button>
         <button type="button" class="btn btn-sm btn-outline-secondary" id="documento-abrir"
@@ -40,7 +45,7 @@
                 title="Chatear con el bot como si fueras un cliente">&#9654; Probar</button>
         <span id="aviso" class="badge text-bg-danger d-none" role="status"></span>
         <span class="text-body-secondary small ms-auto">
-            <strong>Arrastra el fondo</strong>: seleccionar · <strong>rueda</strong>: mover · <kbd>Ctrl</kbd>+rueda: zoom · <strong>doble clic</strong>: editar · <kbd>Ctrl</kbd>+C/V: copiar
+            <strong>Doble clic</strong>: editar · <kbd>Ctrl</kbd>+rueda: zoom · <kbd>Ctrl</kbd>+C/V: copiar · <kbd>Supr</kbd>: borrar
         </span>
     </div>
 

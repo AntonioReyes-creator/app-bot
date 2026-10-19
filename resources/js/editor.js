@@ -1274,10 +1274,9 @@ if (contenedor) {
         URL.revokeObjectURL(enlace.href);
     });
 
-    // --- Selección múltiple y mover el lienzo.
-    // Arrastrar el fondo dibuja un rectángulo azul que selecciona cajas; el lienzo se mueve con la rueda (Shift: a los
-    // lados) o arrastrando con la rueda apretada. Las seleccionadas se mueven juntas, Supr las borra y Ctrl+C / Ctrl+V
-    // las copia (también a otro flujo). Se escucha en captura para que Drawflow no mueva el lienzo al pulsar el fondo.
+    // --- Selección múltiple. Un botón elige qué hace arrastrar el fondo: «✋ Mover» (por defecto, lo hace Drawflow) o
+    // «⬚ Seleccionar» (rectángulo azul). La rueda apretada mueve siempre. Las seleccionadas se mueven juntas, Supr las
+    // borra y Ctrl+C / Ctrl+V las copia (también a otro flujo). Se escucha en captura para adelantarse a Drawflow.
     const marco = document.querySelector('.lienzo');
     const rectangulo = Object.assign(document.createElement('div'), { className: 'seleccion-rectangulo d-none' });
     marco.append(rectangulo);
@@ -1285,6 +1284,17 @@ if (contenedor) {
     let arrastreRect = null;     // { x0, y0 }: inicio del rectángulo, relativo al marco
     let paneo = null;            // arrastre con la rueda apretada: { x, y, cx, cy }
     let grupo = null;            // arrastre de una caja seleccionada: { nodo, x0, y0, otros: [{ caja, x, y }] }
+    let modo = 'mover';          // qué hace arrastrar el fondo: 'mover' | 'seleccionar'
+
+    function fijarModo(nuevo) {
+        modo = nuevo;
+        document.querySelectorAll('[data-modo]').forEach((b) => {
+            b.classList.toggle('active', b.dataset.modo === modo);
+            b.setAttribute('aria-pressed', String(b.dataset.modo === modo));
+        });
+        marco.classList.toggle('modo-seleccionar', modo === 'seleccionar');
+    }
+    document.querySelectorAll('[data-modo]').forEach((b) => b.addEventListener('click', () => fijarModo(b.dataset.modo)));
 
     const esFondo = (el) => el === contenedor || el === editor.precanvas;
     const cajaDe = (nombre) => {
@@ -1342,7 +1352,7 @@ if (contenedor) {
             }
             return;
         }
-        if (!esFondo(evento.target)) return; // líneas, bolitas…: los maneja Drawflow
+        if (!esFondo(evento.target) || modo === 'mover') return; // líneas, bolitas o mover el lienzo: lo hace Drawflow
 
         // Fondo: empieza el rectángulo (Drawflow no mueve el lienzo).
         evento.preventDefault();
@@ -1401,15 +1411,6 @@ if (contenedor) {
         });
         fijarSeleccion(tocadas.map((caja) => nombrePorId.get(caja.id.slice(5))).filter(Boolean));
     });
-
-    // Rueda: mover el lienzo (Ctrl + rueda sigue siendo zoom, lo hace Drawflow).
-    contenedor.addEventListener('wheel', (evento) => {
-        if (evento.ctrlKey) return;
-        evento.preventDefault();
-        const dx = evento.shiftKey ? evento.deltaY : evento.deltaX;
-        const dy = evento.shiftKey ? 0 : evento.deltaY;
-        moverVista(editor.canvas_x - dx, editor.canvas_y - dy);
-    }, { passive: false });
 
     // Teclado con cajas seleccionadas: Supr borra, Ctrl+C copia, Ctrl+V pega, Esc deshace la selección.
     const PORTAPAPELES = 'app-bot.portapapeles';
