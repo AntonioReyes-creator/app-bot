@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
@@ -38,8 +39,11 @@ class FlujoController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
+        // Nombre único (QA H17): en la lista dos flujos con el mismo nombre no se distinguen.
         $datos = $request->validate([
-            'nombre' => ['required', 'string', 'max:100'],
+            'nombre' => ['required', 'string', 'max:100', Rule::unique('flujos', 'nombre')],
+        ], [
+            'nombre.unique' => 'Ya existe un flujo con ese nombre. Usa otro (por ejemplo, añade la fecha o el área).',
         ]);
 
         $flujo = DB::transaction(function () use ($datos) {

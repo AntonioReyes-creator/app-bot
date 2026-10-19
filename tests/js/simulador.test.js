@@ -117,3 +117,15 @@ test('pasos que piden datos no se combinan; la lista de áreas es de ejemplo y s
 
     assert.match(responder(flujo, 'deposito_pedir_corte', '99').mensajes[0].texto, /^❌ Opción inválida/);
 });
+
+test('opción sin conectar o a un paso borrado (QA H7/H14): lo dice y se queda en el mismo paso', () => {
+    const f = { start: { message: 'Hola', options: { 1: { text: 'A', next_state: null }, 2: { text: 'B', next_state: 'borrado' }, 3: { text: 'C', next_state: 'c' } } }, c: { message: 'Ce' } };
+
+    let r = responder(f, 'start', '1');
+    assert.equal(r.estado, 'start');
+    assert.match(r.mensajes[0].texto, /todavía no lleva a ningún paso/);
+    r = responder(f, 'start', '2');
+    assert.equal(r.estado, 'start');
+    assert.match(r.mensajes[0].nota, /«borrado» fue borrado/);
+    assert.equal(responder(f, 'start', '3').estado, 'c', 'y se puede seguir probando');
+});

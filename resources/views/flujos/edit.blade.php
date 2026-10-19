@@ -30,11 +30,13 @@
                 title="Recoloca las cajas como un árbol de izquierda a derecha y encuadra todo el flujo">&#8862; Ordenar</button>
         <button type="button" class="btn btn-sm btn-outline-secondary" id="copias" aria-pressed="false"
                 title="Mostrar junto a cada caja una copia de los pasos compartidos (ej. «¿Algo más?»). Solo cambia el dibujo">&#10697; Copias</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="documento-abrir"
+                title="Recorrer el flujo paso a paso: empieza en la bienvenida y despliega cada opción">&#128196; Documento</button>
         <button type="button" class="btn btn-sm btn-outline-success" id="probar"
                 title="Conversa con el bot como lo haría una persona en WhatsApp">&#9654; Probar</button>
         <span id="aviso" class="badge text-bg-danger d-none" role="status"></span>
         <span class="text-body-secondary small ms-auto">
-            <strong>Doble clic</strong> o &#9998; para editar · <strong>arrastra</strong> desde una bolita para conectar · <strong>clic derecho</strong> en la bolita: más opciones · <kbd>Supr</kbd> borra la caja o línea seleccionada · <kbd>Ctrl</kbd>+rueda: zoom
+            <strong>Doble clic</strong>: editar · <strong>arrastra</strong> una bolita: conectar · <strong>clic derecho</strong> en ella: más · <kbd>Supr</kbd>: borrar · <kbd>Ctrl</kbd>+rueda: zoom
         </span>
     </div>
 
@@ -176,7 +178,8 @@
                     <div id="seccion-menu">
                         <table class="table table-sm align-middle mb-2">
                             <thead>
-                                <tr><th style="width: 7rem">Nº / clave</th><th>Texto de la opción</th><th></th></tr>
+                                <tr><th style="width: 7rem">Nº / clave</th><th>Texto de la opción</th>
+                                    <th style="width: 32%" title="Otras formas de pedir esta opción. Si la persona escribe un mensaje que contiene una de ellas, el bot elige esta opción.">Palabras clave <span class="text-body-secondary fw-normal small">(opcional)</span></th><th></th></tr>
                             </thead>
                             <tbody id="filas-opciones"></tbody>
                         </table>
@@ -188,6 +191,8 @@
                         </div>
                     </div>
 
+                    {{-- Avisos que no impiden aplicar (QA): final que deja al bot mudo, paso que pide datos, comandos… --}}
+                    <div class="alert alert-warning small mt-3 mb-0 d-none" id="estado-avisos" role="status"></div>
                     <div class="alert alert-danger mt-3 mb-0 d-none" id="estado-error"></div>
                   </div>
 
@@ -211,6 +216,19 @@
                 </div>
             </form>
         </div>
+    </div>
+
+    {{-- Documento: recorrer el flujo paso a paso, a la izquierda. Empieza en start; cada opción se despliega debajo. --}}
+    <div class="offcanvas offcanvas-start documento" tabindex="-1" id="documento" data-bs-scroll="true" data-bs-backdrop="false"
+         aria-labelledby="documento-titulo">
+        <div class="offcanvas-header border-bottom py-2">
+            <h2 class="offcanvas-title fs-6 mb-0" id="documento-titulo">&#128196; Recorrer el flujo</h2>
+            <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="documento-copiar" title="Copiar el documento completo (Markdown)">Copiar</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary ms-1 me-2" id="documento-descargar" title="Descargar el documento completo (.md)">Descargar</button>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Cerrar"></button>
+        </div>
+        <div class="nav-barra px-3 py-2 border-bottom" id="documento-barra"></div>
+        <div class="offcanvas-body small" id="documento-contenido"></div>
     </div>
 
     {{-- Simulador: conversación con el bot (lo que respondería el motor), usando el flujo tal como está en el editor. --}}

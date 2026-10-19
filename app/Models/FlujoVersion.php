@@ -26,12 +26,14 @@ class FlujoVersion extends Model
     {
         return [
             'FLUJO' => [
+                // Con mensajes de partida (QA H3): con mensajes vacíos el bot enviaba un mensaje vacío.
+                // Son generales y se cambian en el editor.
                 'start' => [
-                    'message' => '',
+                    'message' => '¡Hola! 👋 Bienvenido. ¿En qué te podemos ayudar?',
                     'next_state' => 'end',
                 ],
                 'end' => [
-                    'message' => '',
+                    'message' => '¡Gracias por escribirnos! Que tengas un buen día. 👋',
                 ],
             ],
         ];

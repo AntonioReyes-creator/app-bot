@@ -1,5 +1,6 @@
-import { AVANZADOS, BASICOS, esEstadoSistema } from './estados-sistema.js';
+import { AVANZADOS, BASICOS, esEstadoSistema, etiquetaSistema } from './estados-sistema.js';
 import { salidas } from './flujo-a-drawflow.js';
+import { MAXIMO_CARACTERES } from './whatsapp.js';
 
 // Operaciones sobre el modelo del editor: { flujo, layout }.
 // El modelo es la fuente de verdad; el lienzo se redibuja a partir de él (flujo-a-drawflow.js).
@@ -35,47 +36,94 @@ export function ejemploMensaje(nombre, tipo) {
     return 'Ej.: Listo, registramos tu solicitud.';
 }
 
+/** "atencion_al_cliente" → "atención al cliente" no es posible sin diccionario: "atencion al cliente". */
+const legible = (parte) => parte.replace(/_/g, ' ');
+
 /**
- * Estados del sistema: la estructura que espera el motor, con los mensajes vacíos.
- * Los que no aparecen aquí nacen como caja final.
+ * Pasos especiales: vienen ARMADOS (decisión del usuario, QA H6): mensaje con texto general y opciones ya conectadas,
+ * listos para funcionar. Los textos son generales (sirven para cualquier bot) y se pueden cambiar en el editor.
+ * Cada plantilla nombra a sus destinos; agregarPasoEspecial() crea los que falten (companerosDe).
  */
 const PLANTILLAS_SISTEMA = {
-    start: () => ({ message: '', next_state: null }),
-    end: () => ({ message: '' }),
-    esperando_agente: () => ({ message: '' }),
-    end_or_menu: () => ({ message: '', options: { 1: { text: '', next_state: null }, 2: { text: '', next_state: null } } }),
-    mas_informacion: (si) => ({ message: '', next_state: si('esperando_agente') }),
-    encuesta_inicio: () => ({ message: '', options: { 1: { text: '', next_state: null }, 2: { text: '', next_state: null } } }),
-    encuesta_fin: (si) => ({ message: '', next_state: si('end') }),
+    start: () => ({ message: '¡Hola! 👋 Bienvenido. ¿En qué te podemos ayudar?', next_state: 'end' }),
+    end: () => ({ message: '¡Gracias por escribirnos! Que tengas un buen día. 👋' }),
+    esperando_agente: () => ({ message: 'En un momento una persona de nuestro equipo continuará la conversación. 🙌' }),
+    end_or_menu: () => ({
+        message: '¿Te puedo ayudar en algo más?',
+        options: { 1: { text: 'Sí, volver al inicio', next_state: 'start' }, 2: { text: 'No, gracias', next_state: 'end' } },
+    }),
+    mas_informacion: () => ({
+        message: 'Para continuar, envíanos en un solo mensaje:\n- Tu nombre completo\n- Tu número de documento\n- Tu correo electrónico\n- Tu consulta',
+        next_state: 'esperando_agente',
+    }),
+    seleccionar_departamento: () => ({
+        message: 'Elige una opción de la lista:',
+        options: { 1: { text: 'Opción de ejemplo (el sistema arma la lista)', next_state: 'mas_informacion' } },
+    }),
+    encuesta_inicio: () => ({
+        message: '¿Quedaste satisfecho con la atención? 🙂',
+        options: { 1: { text: 'Sí', next_state: 'encuesta_fin' }, 2: { text: 'No', next_state: 'encuesta_fin' } },
+    }),
+    encuesta_fin: () => ({ message: '¡Gracias por tu respuesta! 💛', next_state: 'end' }),
+    verificacion_numero: () => ({
+        message: 'Para continuar tu atención, envíanos en un solo mensaje tu nombre completo y tu consulta.',
+        next_state: 'esperando_agente',
+    }),
 };
 
 /**
- * Plantilla de un estado del sistema. Los de patrón copian la forma que tienen en el flujo del Poder Judicial
- * y se conectan con su pareja si ya está en el flujo (X_pedir_corte → X_confirmar; el "No" de X_confirmar
- * vuelve a X_pedir_corte; derivar_X → mas_informacion).
+ * Plantilla armada de un estado del sistema. Los de patrón siguen la forma del flujo del Poder Judicial:
+ * X_pedir_corte (lista) → X_confirmar (Sí → mas_informacion · No → X_pedir_corte); derivar_X → mas_informacion.
  */
-export function plantillaSistema(nombre, flujo = {}) {
-    const si = (destino) => (destino in flujo ? destino : null);
-    if (PLANTILLAS_SISTEMA[nombre]) return PLANTILLAS_SISTEMA[nombre](si);
+export function plantillaSistema(nombre) {
+    if (PLANTILLAS_SISTEMA[nombre]) return PLANTILLAS_SISTEMA[nombre]();
 
     if (nombre.endsWith('_pedir_corte')) {
         const base = nombre.slice(0, -'_pedir_corte'.length);
-        return { message: '{{departamentos}}', next_state: si(`${base}_confirmar`) }; // el motor pone aquí la lista de cortes
+        // {{departamentos}}: el motor pone aquí la lista de áreas
+        return { message: 'Elige una opción de la lista:\n\n{{departamentos}}', next_state: `${base}_confirmar` };
     }
     if (nombre.endsWith('_confirmar')) {
         const base = nombre.slice(0, -'_confirmar'.length);
         return {
-            message: '',
-            options: { 1: { text: '', next_state: null }, 2: { text: '', next_state: si(`${base}_pedir_corte`) } },
+            message: '¿Es correcta tu elección?',
+            options: { 1: { text: 'Sí', next_state: 'mas_informacion' }, 2: { text: 'No, elegir otra', next_state: `${base}_pedir_corte` } },
         };
     }
     if (nombre.startsWith('derivar_')) {
-        return { message: '', next_state: si('mas_informacion') };
+        const area = legible(nombre.slice('derivar_'.length));
+        return { message: `Te comunicaremos con el área de ${area}. Responde este mensaje para continuar.`, next_state: 'mas_informacion' };
     }
-    if (nombre.startsWith('esperando_agente')) {
-        return { message: '' };
+    if (nombre.startsWith('esperando_agente_')) {
+        const area = legible(nombre.slice('esperando_agente_'.length));
+        return { message: `En un momento una persona del área de ${area} continuará la conversación. 🙌` };
     }
-    return plantilla('final');
+    return { message: '' };
+}
+
+/** Estados que un paso especial necesita para funcionar (los destinos de su plantilla). */
+export function companerosDe(nombre) {
+    return salidas(plantillaSistema(nombre)).map((s) => s.destino).filter(Boolean);
+}
+
+/**
+ * Añade un paso especial ARMADO y, si faltan, los estados que necesita (p. ej. «Encuesta: pregunta» trae su
+ * «Encuesta: cierre»; «Escalar a un asesor» trae «Pasar con un asesor»), a la derecha y ya conectados.
+ * No toca los que ya existen. Devuelve los nombres creados (el primero es `nombre`).
+ */
+export function agregarPasoEspecial(modelo, nombre, posicion) {
+    const creados = [];
+    const pendientes = [{ nombre, posicion }];
+    while (pendientes.length) {
+        const { nombre: actual, posicion: lugar } = pendientes.shift();
+        if (actual in modelo.flujo) continue;
+        agregarEstado(modelo, actual, plantillaSistema(actual), lugar);
+        creados.push(actual);
+        companerosDe(actual).forEach((companero, i) => pendientes.push({
+            nombre: companero, posicion: { x: modelo.layout[actual].x + 340, y: modelo.layout[actual].y + i * 180 },
+        }));
+    }
+    return creados;
 }
 
 /**
@@ -101,10 +149,12 @@ export function enlazarPareja(modelo, nombre) {
  * Devuelve { nombre, error }; error es null si se puede crear.
  */
 export function nombrePatron(flujo, { antes, despues }, parte) {
-    const limpio = String(parte ?? '').trim();
+    // Se escribe como se habla («Atención al Cliente») y se convierte solo (atencion_al_cliente), como el nombre
+    // visible en el resto del editor (QA H9).
+    const limpio = String(parte ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40).replace(/_+$/, '');
     const nombre = `${antes}${limpio}${despues}`;
-    if (!limpio) return { nombre, error: 'Escribe la parte variable (ej. notificaciones).' };
-    if (!/^[a-z0-9_]+$/.test(limpio)) return { nombre, error: 'Solo minúsculas, números y guion bajo.' };
+    if (!limpio) return { nombre, error: 'Escribe el nombre del área (ej. notificaciones).' };
     return { nombre, error: validarNombre(flujo, nombre) };
 }
 
@@ -216,6 +266,11 @@ export function aplicarEdicion(modelo, nombre, cambios) {
         if (error) return { campo: 'nombre', mensaje: error };
     }
 
+    // QA H15: WhatsApp no envía más de MAXIMO_CARACTERES.
+    if (String(cambios.message ?? '').length > MAXIMO_CARACTERES) {
+        return { campo: 'mensaje', mensaje: `El mensaje tiene ${cambios.message.length} caracteres; WhatsApp admite hasta ${MAXIMO_CARACTERES}. Acórtalo o divídelo en dos pasos.` };
+    }
+
     let opciones = null;
     if (cambios.tipo === 'menu') {
         if (cambios.opciones.length === 0) return { campo: 'opciones', mensaje: 'Un menú necesita al menos una opción.' };
@@ -225,6 +280,8 @@ export function aplicarEdicion(modelo, nombre, cambios) {
             const c = String(clave).trim();
             if (!c) return { campo: 'clave', indice, mensaje: 'Cada opción necesita un número o clave.' };
             if (c in opciones) return { campo: 'clave', indice, mensaje: `La opción «${c}» está repetida.` };
+            // QA H10: sin texto, la persona vería solo «1.».
+            if (!String(text ?? '').trim()) return { campo: 'texto', indice, mensaje: `Escribe el texto de la opción «${c}»: es lo que verá la persona.` };
             opciones[c] = { ...extra, text, next_state: next_state || null };
         }
     }
@@ -345,23 +402,45 @@ export function fijarDestino(modelo, nombre, indice, destino) {
 /**
  * Crea un estado nuevo a la derecha del origen y lo conecta a su salida nº `indice`.
  * nuevo = { tipo: 'menu'|'paso'|'final' } o { sistema: 'end_or_menu' }.
- * Identificador automático: el texto de la opción en snake_case ("Opción 1" → opcion_1), y ese texto queda
- * como nombre visible; si la salida no tiene texto (opción vacía o «sigue»), el tipo numerado (paso_1…).
+ * Nombre automático:
+ *  - con texto de opción: nombre visible = el texto ("Ver precios"), identificador = su slug (ver_precios);
+ *  - si el texto no da un slug (solo emojis 🌹) o la salida es «sigue»: identificador a partir del origen
+ *    (start_opcion_1, departamento_siguiente) y nombre visible = el texto, o «Después de <origen>» (QA H16).
+ * «Final» (QA H13): el motor no responde nunca más en un estado sin salida que no sea la Despedida, así que
+ * «+ Nuevo final» crea el mensaje y lo deja conectado a la Despedida (`end`): se envían juntos y la conversación
+ * se cierra bien. Si no hay Despedida, se añade armada.
  * Devuelve el identificador creado.
  */
 export function crearConectado(modelo, origen, indice, nuevo) {
-    const textoOpcion = salidas(modelo.flujo[origen])[indice]?.texto ?? '';
-    const texto = nombreDesdeTexto(textoOpcion);
-    const nombre = nuevo.sistema
-        ?? (texto ? nombreLibre(modelo.flujo, texto) : sugerirNombre(modelo.flujo, nuevo.tipo));
-    if (!nuevo.sistema && texto) fijarTitulo(modelo, nombre, textoOpcion); // nombre visible = texto de la opción
-    if (!nuevo.sistema) (modelo.nuevos ??= []).push(nombre); // nuevo: su identificador sigue al nombre visible
-    const estado = nuevo.sistema ? plantillaSistema(nuevo.sistema, modelo.flujo) : plantilla(nuevo.tipo);
+    const salida = salidas(modelo.flujo[origen])[indice];
+    const textoOpcion = (salida?.texto ?? '').trim();
     const desde = modelo.layout[origen] ?? { x: 0, y: 0 };
+    const lugar = { x: desde.x + 340, y: desde.y + indice * 60 };
 
-    agregarEstado(modelo, nombre, estado, { x: desde.x + 340, y: desde.y + indice * 60 });
+    if (nuevo.sistema) {
+        agregarPasoEspecial(modelo, nuevo.sistema, lugar);
+        fijarDestino(modelo, origen, indice, nuevo.sistema);
+        enlazarPareja(modelo, nuevo.sistema);
+        return nuevo.sistema;
+    }
+
+    const slug = nombreDesdeTexto(textoOpcion);
+    const clave = String(salida?.clave ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '_') || String(indice + 1);
+    const base = slug || (salida?.clave == null ? `${origen}_siguiente` : `${origen}_opcion_${clave}`);
+    const nombre = nombreLibre(modelo.flujo, base);
+    // Nombre visible: el texto de la opción (también si son solo emojis). «sigue» nunca tendrá texto: «Después de…».
+    // Una opción todavía sin texto queda sin nombre visible para que lo tome al escribirlo (sincronizarHijos).
+    if (textoOpcion) fijarTitulo(modelo, nombre, textoOpcion);
+    else if (salida?.clave == null) fijarTitulo(modelo, nombre, `Después de ${modelo.titulos?.[origen] || etiquetaSistema(origen) || origen}`);
+    (modelo.nuevos ??= []).push(nombre); // nuevo: su identificador sigue al nombre visible
+
+    let estado = plantilla(nuevo.tipo);
+    if (nuevo.tipo === 'final') {
+        if (!('end' in modelo.flujo)) agregarPasoEspecial(modelo, 'end', { x: lugar.x + 340, y: lugar.y });
+        estado = { message: '', next_state: 'end' };
+    }
+    agregarEstado(modelo, nombre, estado, lugar);
     fijarDestino(modelo, origen, indice, nombre);
-    if (nuevo.sistema) enlazarPareja(modelo, nombre);
 
     return nombre;
 }

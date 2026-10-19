@@ -1,0 +1,55 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { pareceQuePideDatos, revisarFlujo } from '../../resources/js/flujo/revision.js';
+
+const textos = (flujo) => revisarFlujo(flujo).map((p) => `${p.gravedad} ${p.nombre}: ${p.texto}`);
+
+const bien = {
+    start: { message: 'Hola', options: { 1: { text: 'Info', next_state: 'info' }, salir: { text: 'Salir', next_state: 'end' } } },
+    info: { message: 'Ingrese a la siguiente dirección web: https://x.pe', next_state: 'end_or_menu' },
+    end_or_menu: { message: '¿Algo más?', options: { 1: { text: 'Sí', next_state: 'start' }, 2: { text: 'No', next_state: 'end' } } },
+    derivar_x: { message: 'Por favor, responda este mensaje para continuar', next_state: 'mas_informacion' },
+    mas_informacion: { message: 'Envíanos tus datos', next_state: 'esperando_agente' },
+    esperando_agente: { message: 'Espera' },
+    end: { message: 'Chau' },
+};
+
+test('revisión: un flujo correcto no tiene avisos (sin falsos positivos: «ingrese a la web», «salir» → end, datos a mas_informacion)', () => {
+    assert.deepEqual(textos(bien), []);
+});
+
+test('revisión H3 / H15: mensaje vacío y mensaje más largo que el límite de WhatsApp', () => {
+    const r = textos({ ...bien, end: { message: '  ' }, info: { message: 'x'.repeat(4100), next_state: 'end_or_menu' } });
+    assert.ok(r.some((t) => /^error end: no tiene mensaje/.test(t)));
+    assert.ok(r.some((t) => /^error info: el mensaje tiene 4100 caracteres; WhatsApp admite hasta 4096/.test(t)));
+});
+
+test('revisión H13: un estado sin salida que no es la Despedida deja al bot mudo (encuesta_fin y esperando_agente sí sirven)', () => {
+    const r = textos({ ...bien, precios: { message: 'S/ 10' }, encuesta_fin: { message: 'Gracias' }, esperando_agente_ventas: { message: 'x' } });
+    assert.deepEqual(r.filter((t) => t.includes('ya no responde')).map((t) => t.split(':')[0]), ['error precios']);
+});
+
+test('revisión H1: un paso que pide escribir algo y se une con un estado que no espera texto', () => {
+    const r = textos({ ...bien,
+        pedido: { message: 'Escríbeme tu pedido', next_state: 'end' },
+        nota: { message: 'Indícanos tu dirección', next_state: 'end_or_menu' },
+        pregunta_final: { message: '¿Algo que agregar?', next_state: 'end' },
+        datos: { message: 'Escribe tu DNI', next_state: 'mas_informacion' } });
+    assert.match(r.find((t) => t.startsWith('aviso pedido')), /la conversación termina: la respuesta se pierde/);
+    assert.match(r.find((t) => t.startsWith('aviso nota')), /se tomará como una opción/);
+    assert.ok(r.some((t) => t.startsWith('aviso pregunta_final')), 'pregunta + cierre');
+    assert.ok(!r.some((t) => t.startsWith('aviso datos')), 'mas_informacion sí espera los datos');
+});
+
+test('revisión H10 / H12: opción sin texto y palabra que el motor usa como comando (si lleva a otro sitio)', () => {
+    const r = textos({ ...bien, start: { message: 'Hola', options: {
+        1: { text: '', next_state: 'info' }, menu: { text: 'Ver menú', next_state: 'start' }, 2: { text: 'Fin', next_state: 'info' } } } });
+    assert.ok(r.some((t) => /^aviso start: la opción 1 no tiene texto/.test(t)));
+    assert.ok(!r.some((t) => t.includes('«menu»')), '«menu» → start hace lo mismo que el comando');
+    assert.ok(r.some((t) => /la opción «fin» es un comando del bot \(termina el chat\)/.test(t)));
+});
+
+test('pareceQuePideDatos: verbos de pedir texto, sin confundir «ingrese a la web» ni «canal digital»', () => {
+    for (const m of ['Escríbeme tu pedido', 'Indícanos tu distrito', 'Envíanos una foto', 'Dinos tu nombre']) assert.ok(pareceQuePideDatos(m), m);
+    for (const m of ['Ingrese a la web', 'Gracias por usar nuestro canal digital', 'Elige una opción']) assert.ok(!pareceQuePideDatos(m), m);
+});

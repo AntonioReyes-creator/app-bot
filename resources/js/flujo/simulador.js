@@ -77,21 +77,40 @@ const salir = () => ({
     mensajes: [{ texto: ENCUESTA_SALIDA, nota: 'Encuesta de salida del sistema (su texto se configura fuera del flujo).' }],
 });
 
+/**
+ * Al llegar a `destino` eligiendo una opción, ¿el motor lo envía en el mismo mensaje que el estado siguiente?
+ * (l.5051-5074) Sí cuando `destino` es un paso (sin opciones, con next_state) y ni él ni el siguiente piden datos
+ * ({{departamentos}} o mas_informacion). Devuelve el nombre del estado siguiente, o null si no se combina.
+ */
+export function combinaCon(flujo, destino) {
+    const paso = flujo[destino];
+    if (!paso || tieneOpciones(paso) || paso.next_state == null) return null;
+    if (tieneAreas(paso.message) || destino === 'mas_informacion') return null;
+    const final = flujo[paso.next_state];
+    return final && !tieneAreas(final.message) ? paso.next_state : null;
+}
+
 /** Entra al estado `destino` tras elegir una opción (l.5051-5118): combina con el siguiente si es un paso informativo. */
-function entrar(flujo, destino) {
+function entrar(flujo, destino, desde) {
+    // Opción sin conectar o que va a un paso borrado: el simulador lo dice y se queda donde estaba (QA H7/H14).
+    if (destino == null) {
+        return { estado: desde, mensajes: [{ texto: '⚠️ (Esta opción todavía no lleva a ningún paso.)', nota: 'En el editor: conéctala desde su bolita o desde 📄 Recorrer el flujo.' }] };
+    }
     if (destino === 'end') return salir();
     const siguiente = flujo[destino];
-    if (!siguiente) return { estado: destino, mensajes: [{ texto: '⚠️ Estado no disponible.', nota: `El estado «${destino}» no existe en el flujo.` }] };
+    if (!siguiente) {
+        return { estado: desde, mensajes: [{ texto: '⚠️ (Esta opción lleva a un paso que ya no existe.)', nota: `El paso «${destino}» fue borrado: vuelve a conectar la opción.` }] };
+    }
 
     let texto = conAreas(siguiente.message);
-    const pideDatos = tieneAreas(siguiente.message) || destino === 'mas_informacion';
-    const final = !tieneOpciones(siguiente) && siguiente.next_state != null ? flujo[siguiente.next_state] : null;
+    const combinado = combinaCon(flujo, destino);
 
-    // combinar: el siguiente es un paso (sin opciones, con next_state) y ni él ni su destino piden datos
-    if (final && !pideDatos && !tieneAreas(final.message)) {
+    // combinar: el siguiente es un paso informativo → un solo mensaje con el estado que le sigue
+    if (combinado) {
+        const final = flujo[combinado];
         texto += `\n\n${final.message ?? ''}`;
         if (tieneOpciones(final)) texto += opcionesGuion(final);
-        return { estado: siguiente.next_state, mensajes: [{ texto }] };
+        return { estado: combinado, mensajes: [{ texto }] };
     }
 
     if (tieneOpciones(siguiente)) {
@@ -159,7 +178,7 @@ export function responder(flujo, estadoActual, texto) {
     if (tieneOpciones(estado)) {
         const elegida = elegirOpcion(estado, texto);
         if (!elegida) return { estado: estadoActual, mensajes: [{ texto: opcionInvalida(estado, texto) }] };
-        return entrar(flujo, elegida[1].next_state);
+        return entrar(flujo, elegida[1].next_state, estadoActual);
     }
 
     // Paso: lo que escriba la persona se ignora y se pasa al siguiente (l.6146).

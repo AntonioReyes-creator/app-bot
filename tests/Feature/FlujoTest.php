@@ -48,14 +48,15 @@ class FlujoTest extends TestCase
         $this->assertStringContainsString('¡Hola! Atención 👋', $crudo);
     }
 
-    public function test_el_flujo_nuevo_nace_con_los_mensajes_vacios(): void
+    public function test_el_flujo_nuevo_nace_con_bienvenida_y_despedida_con_mensaje(): void
     {
         $this->post('/flujos', ['nombre' => 'Nuevo']);
 
-        $this->assertSame(
-            ['start' => ['message' => '', 'next_state' => 'end'], 'end' => ['message' => '']],
-            Flujo::sole()->ultimaVersion->contenido['FLUJO'],
-        );
+        $flujo = Flujo::sole()->ultimaVersion->contenido['FLUJO'];
+        $this->assertSame(['start', 'end'], array_keys($flujo));
+        $this->assertSame('end', $flujo['start']['next_state']);
+        $this->assertNotSame('', trim($flujo['start']['message']), 'con mensaje vacío el bot enviaba un mensaje vacío (QA H3)');
+        $this->assertNotSame('', trim($flujo['end']['message']));
     }
 
     public function test_nombre_vacio_muestra_error_en_espanol(): void
@@ -100,11 +101,12 @@ class FlujoTest extends TestCase
         $this->get('/flujos/no-existe/editar')->assertNotFound();
     }
 
-    public function test_nombre_repetido_genera_slug_distinto(): void
+    public function test_nombres_distintos_con_el_mismo_slug_reciben_slugs_distintos(): void
     {
+        // Nombres distintos (el mismo nombre ya no se permite) que dan el mismo slug.
         $this->post('/flujos', ['nombre' => 'ONPE']);
-        $this->post('/flujos', ['nombre' => 'ONPE']);
-        $this->post('/flujos', ['nombre' => 'onpe']);
+        $this->post('/flujos', ['nombre' => 'ONPE.']);
+        $this->post('/flujos', ['nombre' => 'ONPE!']);
 
         $this->assertSame(['onpe', 'onpe-2', 'onpe-3'], Flujo::orderBy('id')->pluck('slug')->all());
     }
@@ -228,5 +230,15 @@ class FlujoTest extends TestCase
         $respuesta = $this->putJson('/flujos/poder-judicial/borrador', ['contenido' => $contenido])->assertOk();
 
         $this->assertSame(now()->format('Y-m-d H:i'), \Illuminate\Support\Carbon::parse($respuesta->json('guardado_en'))->format('Y-m-d H:i'));
+    }
+
+    public function test_no_se_pueden_crear_dos_flujos_con_el_mismo_nombre(): void
+    {
+        $this->post('/flujos', ['nombre' => 'Tienda Lima'])->assertRedirect('/flujos');
+
+        $this->from('/flujos/crear')->post('/flujos', ['nombre' => 'Tienda Lima'])
+            ->assertRedirect('/flujos/crear')
+            ->assertSessionHasErrors(['nombre' => 'Ya existe un flujo con ese nombre. Usa otro (por ejemplo, añade la fecha o el área).']);
+        $this->assertSame(1, Flujo::count());
     }
 }

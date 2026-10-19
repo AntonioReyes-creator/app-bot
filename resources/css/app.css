@@ -125,3 +125,71 @@
 .copia-nombre { font-weight: 600; color: #495057; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .copia-opciones { display: flex; flex-wrap: wrap; gap: .15rem .3rem; margin-top: .1rem; }
 .copia-opciones .copia-opcion { font-size: .68rem; padding: 0 .3rem; }
+
+/* 📄 Documento: recorrer el flujo paso a paso. Tarjetas anidadas: cada opción abierta despliega su paso debajo. */
+.documento { --bs-offcanvas-width: 440px; }
+.documento .offcanvas-body { background: #f4f1ec; }
+.nav-barra { display: flex; align-items: flex-start; gap: .5rem; }
+.nav-migas { display: flex; flex-wrap: wrap; align-items: center; gap: .15rem .25rem; font-size: .8rem; min-width: 0; }
+.nav-migas button { border: 0; background: none; padding: 0; color: #0d6efd; max-width: 11rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-migas button:last-child { color: #212529; font-weight: 600; }
+.nav-migas span { color: #adb5bd; }
+.nav-avisos { margin-left: auto; font-size: .8rem; }
+.nav-avisos summary { color: #b02a37; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.nav-avisos ul { position: absolute; right: .75rem; z-index: 5; width: 22rem; max-height: 14rem; overflow-y: auto; margin: .25rem 0 0;
+    padding: .5rem .5rem .5rem 1.4rem; background: #fff; border: 1px solid #dee2e6; border-radius: .375rem; box-shadow: 0 .25rem .75rem rgba(0, 0, 0, .1); }
+.nav-avisos a { color: inherit; }
+.nav-paso { background: #fff; border-radius: .5rem; border-left: 4px solid var(--color-tipo); padding: .45rem .55rem .35rem;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .08); transition: box-shadow .2s; }
+.nav-paso.tipo-menu  { --color-tipo: #0d6efd; }
+.nav-paso.tipo-paso  { --color-tipo: #198754; }
+.nav-paso.tipo-final { --color-tipo: #dc3545; }
+.nav-paso.resaltada { box-shadow: 0 0 0 3px rgba(13, 110, 253, .4); }
+.nav-cabecera { display: flex; align-items: baseline; gap: .35rem; }
+.nav-titulo { border: 0; background: none; padding: 0; font-weight: 600; text-align: left; color: inherit; }
+.nav-titulo:hover { color: #0d6efd; }
+.nav-id { color: #adb5bd; font-family: var(--bs-font-monospace); font-size: .7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.nav-tipo { margin-left: auto; font-size: .65rem; color: var(--color-tipo); text-transform: uppercase; }
+.nav-editar { border: 0; background: none; padding: 0 .15rem; color: #6c757d; }
+.nav-editar:hover { color: #0d6efd; }
+.nav-burbuja { background: #f0f2f5; border-radius: 0 .5rem .5rem .5rem; padding: .35rem .5rem; margin: .3rem 0 .2rem; overflow-wrap: anywhere; color: #212529; }
+.nav-burbuja:not(.caja-vacio) { cursor: pointer; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+.nav-burbuja.completo { display: block; }
+.nav-explicacion { color: #6c757d; font-size: .72rem; margin: .1rem 0; }
+.nav-opciones { list-style: none; margin: .3rem 0 0; padding: 0; }
+.nav-opciones > li + li { border-top: 1px solid #f1f3f5; }
+.nav-opciones > li.abierta > .nav-opcion { background: #e7f1ff; }
+.nav-opciones > li > .nav-paso { margin: .25rem 0 .4rem 1rem; }
+.nav-fila { display: flex; align-items: stretch; }
+.nav-mas { flex: none; border: 0; background: none; color: #adb5bd; padding: 0 .35rem; border-radius: .25rem; font-size: 1rem; line-height: 1; }
+.nav-mas:hover { color: #0d6efd; background: #f1f3f5; }
+.nav-opcion { display: flex; align-items: baseline; gap: .4rem; width: 100%; border: 0; background: none; padding: .3rem .25rem; text-align: left; border-radius: .25rem; color: inherit; }
+.nav-opcion:hover:not(:disabled) { background: #f1f3f5; }
+.nav-texto { display: flex; flex-direction: column; min-width: 0; }
+.nav-texto small { color: #6c757d; font-size: .72rem; }
+.nav-clave { font-weight: 600; }
+.nav-opcion.modo-vuelve .nav-texto small { color: #0a58ca; }
+
+/* Señales de la navegación: viñeta en círculo (› gira al abrir) y la acción escrita a la derecha. */
+.nav-opcion { align-items: center; }
+.nav-vineta { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 1.35rem; height: 1.35rem;
+    border-radius: 50%; background: #e7f1ff; color: #0d6efd; font-weight: 700; font-size: 1rem; line-height: 1; transition: transform .2s; }
+li.abierta > .nav-fila .nav-vineta { transform: rotate(90deg); background: #0d6efd; color: #fff; }
+.nav-opcion.modo-vuelve .nav-vineta { background: #f1f3f5; color: #6c757d; font-size: .8rem; }
+.nav-opcion.modo-pendiente .nav-vineta { background: #fff3cd; color: #b35c00; }
+.nav-opcion.modo-roto .nav-vineta { background: #f8d7da; color: #b02a37; font-size: .8rem; }
+.nav-accion { margin-left: auto; flex: none; font-size: .72rem; color: #0d6efd; border: 1px solid #b6d4fe; border-radius: 1rem;
+    padding: .05rem .5rem; background: #fff; white-space: nowrap; }
+.nav-opcion:hover .nav-accion { background: #0d6efd; color: #fff; border-color: #0d6efd; }
+li.abierta > .nav-fila .nav-accion { color: #6c757d; border-color: #dee2e6; }
+.nav-opcion.modo-pendiente .nav-accion { color: #b35c00; border-color: #ffda6a; }
+.nav-opcion.modo-roto .nav-accion { color: #b02a37; border-color: #f1aeb5; }
+.nav-opcion.modo-vuelve .nav-accion { color: #6c757d; border-color: #dee2e6; }
+/* El paso que se acaba de abrir entra deslizándose. */
+.nav-paso.nav-entra { animation: nav-entra .22s ease-out; transform-origin: top; }
+@keyframes nav-entra { from { opacity: 0; transform: translateY(-6px) scaleY(.96); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+    .nav-paso.nav-entra { animation: none; }
+    .nav-vineta { transition: none; }
+}
+.aviso-clic { cursor: pointer; }

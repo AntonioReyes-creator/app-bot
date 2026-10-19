@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    agregarEstado, aplicarEdicion, conectarYNombrar, contenidoParaGuardar, crearConectado, eliminarEstado, enlazarPareja, fijarDestino, fijarTitulo,
+    agregarEstado, agregarPasoEspecial, aplicarEdicion, conectarYNombrar, contenidoParaGuardar, crearConectado, eliminarEstado, enlazarPareja, fijarDestino, fijarTitulo,
     esNuevo, identificadorPara, moverEstado, opcionesDe, sincronizarHijos, tituloDe,
     nombreDesdeTexto, nombrePatron, plantilla, plantillaSistema, siguienteClave, sistemaDisponibles, sugerirNombre, validarNombre,
 } from '../../resources/js/flujo/modelo.js';
@@ -92,19 +92,39 @@ test('estados del sistema: básicos por defecto, avanzados aparte; solo los que 
     assert.ok(!sistemaDisponibles(flujo, { avanzados: true }).includes('esperando_agente'));
 });
 
-test('plantillas: estructura del motor y mensajes vacíos (nada inventado)', () => {
+test('pasos especiales ARMADOS (QA H6): mensaje con texto y opciones con texto y destino', () => {
     assert.equal(clasificar(plantillaSistema('end_or_menu')), 'menu');
-    assert.equal(plantillaSistema('mas_informacion', { esperando_agente: {} }).next_state, 'esperando_agente');
-    assert.equal(plantillaSistema('mas_informacion', {}).next_state, null, 'sin esperando_agente: sin conectar');
-    assert.equal(clasificar(plantillaSistema('verificacion_numero')), 'final');
+    assert.deepEqual(plantillaSistema('end_or_menu').options, {
+        1: { text: 'Sí, volver al inicio', next_state: 'start' }, 2: { text: 'No, gracias', next_state: 'end' } });
+    assert.equal(plantillaSistema('mas_informacion').next_state, 'esperando_agente');
+    assert.deepEqual(Object.values(plantillaSistema('encuesta_inicio').options).map((o) => o.next_state), ['encuesta_fin', 'encuesta_fin']);
+    assert.equal(plantillaSistema('encuesta_fin').next_state, 'end');
 
-    for (const nombre of ['start', 'end', 'esperando_agente', 'end_or_menu', 'mas_informacion', 'encuesta_inicio', 'derivar_x', 'x_confirmar']) {
+    for (const nombre of ['start', 'end', 'esperando_agente', 'end_or_menu', 'mas_informacion', 'seleccionar_departamento',
+        'encuesta_inicio', 'encuesta_fin', 'verificacion_numero', 'derivar_x', 'x_pedir_corte', 'x_confirmar', 'esperando_agente_x']) {
         const estado = plantillaSistema(nombre);
-        assert.equal(estado.message, '', `${nombre}: mensaje vacío`);
-        for (const opcion of Object.values(estado.options ?? {})) assert.equal(opcion.text, '', `${nombre}: opción sin texto`);
+        assert.ok(estado.message.trim(), `${nombre}: con mensaje`);
+        for (const opcion of Object.values(estado.options ?? {})) {
+            assert.ok(opcion.text.trim(), `${nombre}: opción con texto`);
+            assert.ok(opcion.next_state, `${nombre}: opción conectada`);
+        }
     }
-    for (const tipo of ['menu', 'paso', 'final']) assert.equal(plantilla(tipo).message, '');
-    assert.equal(plantillaSistema('x_pedir_corte').message, '{{departamentos}}', 'marca funcional del motor, no texto inventado');
+    assert.match(plantillaSistema('x_pedir_corte').message, /\{\{departamentos\}\}/, 'la lista la pone el motor');
+    for (const tipo of ['menu', 'paso', 'final']) assert.equal(plantilla(tipo).message, '', 'las cajas normales nacen vacías');
+});
+
+test('agregarPasoEspecial: añade el paso armado y los que necesita, sin tocar los que ya existen', () => {
+    const modelo = { flujo: { start: { message: 'x', next_state: 'end' }, end: { message: 'Chau' } }, layout: { start: { x: 0, y: 0 } } };
+
+    assert.deepEqual(agregarPasoEspecial(modelo, 'encuesta_inicio', { x: 500, y: 0 }), ['encuesta_inicio', 'encuesta_fin']);
+    assert.equal(modelo.flujo.end.message, 'Chau', 'la Despedida que ya estaba no se toca');
+    assert.ok(modelo.layout.encuesta_fin.x > modelo.layout.encuesta_inicio.x, 'el compañero va a la derecha');
+
+    assert.deepEqual(agregarPasoEspecial(modelo, 'mas_informacion', { x: 0, y: 900 }), ['mas_informacion', 'esperando_agente']);
+    assert.deepEqual(agregarPasoEspecial(modelo, 'derivar_ventas', { x: 0, y: 1300 }), ['derivar_ventas'], 'mas_informacion ya estaba');
+    assert.match(modelo.flujo.derivar_ventas.message, /área de ventas/);
+    assert.deepEqual(agregarPasoEspecial(modelo, 'x_pedir_corte', { x: 0, y: 1700 }), ['x_pedir_corte', 'x_confirmar']);
+    assert.deepEqual(agregarPasoEspecial(modelo, 'encuesta_inicio', { x: 0, y: 0 }), [], 'ya existe: no hace nada');
 });
 
 test('nombrePorId relaciona los ids de Drawflow con los nombres', () => {
@@ -226,11 +246,24 @@ test('crearConectado: la caja nueva se llama como el texto de la opción, a la d
     assert.equal(modelo.flujo.tramites.next_state, 'end_or_menu');
 });
 
-test('crearConectado: sin texto (opción vacía o «sigue») usa el tipo numerado', () => {
-    const modelo = { flujo: { start: { message: 'x', options: { 1: { text: '', next_state: null } } }, paso: { message: 'y', next_state: null } }, layout: {} };
+test('crearConectado sin texto útil (QA H16): nombre a partir del origen; «sigue» se llama «Después de …»', () => {
+    const modelo = { flujo: { start: { message: 'x', options: { 1: { text: '', next_state: null }, 2: { text: '🌹', next_state: null } } },
+        paso: { message: 'y', next_state: null }, end: { message: 'Chau' } }, layout: {}, titulos: { paso: 'Departamento' } };
 
-    assert.equal(crearConectado(modelo, 'start', 0, { tipo: 'menu' }), 'menu_1');
-    assert.equal(crearConectado(modelo, 'paso', 0, { tipo: 'final' }), 'final_1');
+    assert.equal(crearConectado(modelo, 'start', 0, { tipo: 'menu' }), 'start_opcion_1');
+    assert.equal(tituloDe(modelo, 'start_opcion_1'), 'start_opcion_1', 'opción aún sin texto: sin nombre visible (lo toma al escribirlo)');
+    assert.equal(crearConectado(modelo, 'start', 1, { tipo: 'paso' }), 'start_opcion_2');
+    assert.equal(tituloDe(modelo, 'start_opcion_2'), '🌹', 'solo emoji: nombre visible = el emoji');
+    assert.equal(crearConectado(modelo, 'paso', 0, { tipo: 'menu' }), 'paso_siguiente');
+    assert.equal(tituloDe(modelo, 'paso_siguiente'), 'Después de Departamento');
+});
+
+test('«+ Nuevo final» (QA H13): el mensaje queda conectado a la Despedida para que el bot no se quede mudo', () => {
+    const modelo = { flujo: { start: { message: 'x', options: { 1: { text: 'Ver precios', next_state: null } } } }, layout: {} };
+
+    assert.equal(crearConectado(modelo, 'start', 0, { tipo: 'final' }), 'ver_precios');
+    assert.equal(modelo.flujo.ver_precios.next_state, 'end');
+    assert.ok(modelo.flujo.end?.message, 'sin Despedida: se añade armada');
 });
 
 test('nombreDesdeTexto: snake_case sin tildes ni signos, empezando por letra', () => {
@@ -259,27 +292,26 @@ test('el error de edición indica qué campo marcar en rojo', () => {
 
 // --- Estados del sistema por patrón ---
 
-test('plantillaSistema por patrón: forma del flujo PJ y se conecta con su pareja si existe', () => {
-    const vacio = {};
-    assert.equal(clasificar(plantillaSistema('deposito_pedir_corte', vacio)), 'paso');
-    assert.equal(plantillaSistema('deposito_pedir_corte', vacio).next_state, null, 'sin pareja: sin conectar');
-    assert.match(plantillaSistema('deposito_pedir_corte', vacio).message, /\{\{departamentos\}\}/);
-
-    const conPareja = { deposito_pedir_corte: {}, deposito_confirmar: {}, mas_informacion: {} };
-    assert.equal(plantillaSistema('deposito_pedir_corte', conPareja).next_state, 'deposito_confirmar');
-    assert.equal(plantillaSistema('deposito_confirmar', conPareja).options['2'].next_state, 'deposito_pedir_corte');
-    assert.equal(plantillaSistema('derivar_quejas', conPareja).next_state, 'mas_informacion');
-    assert.equal(clasificar(plantillaSistema('esperando_agente_quejas', vacio)), 'final');
+test('plantillaSistema por patrón: forma del flujo PJ, armada y con sus destinos', () => {
+    assert.equal(clasificar(plantillaSistema('deposito_pedir_corte')), 'paso');
+    assert.equal(plantillaSistema('deposito_pedir_corte').next_state, 'deposito_confirmar');
+    assert.match(plantillaSistema('deposito_pedir_corte').message, /\{\{departamentos\}\}/);
+    assert.equal(plantillaSistema('deposito_confirmar').options['1'].next_state, 'mas_informacion');
+    assert.equal(plantillaSistema('deposito_confirmar').options['2'].next_state, 'deposito_pedir_corte');
+    assert.equal(plantillaSistema('derivar_quejas').next_state, 'mas_informacion');
+    assert.equal(clasificar(plantillaSistema('esperando_agente_quejas')), 'final');
+    assert.match(plantillaSistema('esperando_agente_atencion_al_cliente').message, /área de atencion al cliente/);
 });
 
-test('nombrePatron arma y valida el nombre: prefijo/sufijo + parte en snake_case', () => {
+test('nombrePatron arma el nombre y convierte solo lo que se escribe (QA H9)', () => {
     const derivar = { antes: 'derivar_', despues: '' };
     const pedir = { antes: '', despues: '_pedir_corte' };
 
     assert.deepEqual(nombrePatron({}, derivar, 'quejas'), { nombre: 'derivar_quejas', error: null });
     assert.deepEqual(nombrePatron({}, pedir, 'deposito'), { nombre: 'deposito_pedir_corte', error: null });
-    assert.match(nombrePatron({}, derivar, '').error, /parte variable/);
-    assert.match(nombrePatron({}, derivar, 'Quejas Varias').error, /minúsculas/);
+    assert.deepEqual(nombrePatron({}, derivar, 'Atención al Cliente'), { nombre: 'derivar_atencion_al_cliente', error: null });
+    assert.match(nombrePatron({}, derivar, '').error, /nombre del área/);
+    assert.match(nombrePatron({}, derivar, '¿?').error, /nombre del área/);
     assert.match(nombrePatron({ derivar_quejas: {} }, derivar, 'quejas').error, /Ya existe/);
 });
 
@@ -508,8 +540,8 @@ test('no toca cajas compartidas, importadas ni del sistema', () => {
 
 test('una caja creada desde una opción sin texto toma el texto cuando se escribe', () => {
     const modelo = { flujo: { start: { message: '', options: { 1: { text: '', next_state: null } } } }, layout: {}, titulos: {}, nuevos: [] };
-    crearConectado(modelo, 'start', 0, { tipo: 'menu' });               // sin texto → menu_1, sin nombre visible
-    assert.deepEqual(editarOpciones(modelo, ['Pagos']), [{ de: 'menu_1', a: 'pagos' }]);
+    crearConectado(modelo, 'start', 0, { tipo: 'menu' });               // sin texto → start_opcion_1, sin nombre visible
+    assert.deepEqual(editarOpciones(modelo, ['Pagos']), [{ de: 'start_opcion_1', a: 'pagos' }]);
     assert.equal(tituloDe(modelo, 'pagos'), 'Pagos');
 });
 
@@ -531,4 +563,23 @@ test('los textos que ve la persona usan términos generales (nada de un cliente 
     const textos = [...NOMBRES, 'derivar_x', 'x_pedir_corte', 'x_confirmar', 'esperando_agente_x']
         .flatMap((n) => [etiquetaSistema(n), describirSistema(n)]).join(' ');
     assert.doesNotMatch(textos, /corte|jurisdicci|judicial|ONPE|elecci[oó]n electoral/i);
+});
+
+test('aplicarEdicion (QA H10, H15): opción sin texto y mensaje más largo que el límite de WhatsApp no se aplican', () => {
+    const modelo = { flujo: { start: { message: 'Hola', options: { 1: { text: 'A', next_state: null } } } }, layout: {} };
+    const menu = (opciones, message = 'Hola') => ({ nombre: 'start', message, tipo: 'menu', opciones });
+
+    assert.deepEqual(aplicarEdicion(modelo, 'start', menu([{ clave: '1', text: 'A' }, { clave: '2', text: '  ' }])),
+        { campo: 'texto', indice: 1, mensaje: 'Escribe el texto de la opción «2»: es lo que verá la persona.' });
+    assert.equal(aplicarEdicion(modelo, 'start', menu([{ clave: '1', text: 'A' }], 'x'.repeat(4097))).campo, 'mensaje');
+    assert.equal(modelo.flujo.start.message, 'Hola', 'nada cambió');
+    assert.equal(aplicarEdicion(modelo, 'start', menu([{ clave: '1', text: 'A' }], 'x'.repeat(4096))), null, '4096 justo sí');
+});
+
+test('aplicarEdicion (QA H5): las palabras clave viajan en `extra` y se guardan en la opción', () => {
+    const modelo = { flujo: { start: { message: 'Hola', options: { 1: { text: 'Precios', next_state: 'p', keywords: ['viejo'] } } }, p: { message: 'x' } }, layout: {} };
+
+    aplicarEdicion(modelo, 'start', { nombre: 'start', message: 'Hola', tipo: 'menu',
+        opciones: [{ clave: '1', text: 'Precios', next_state: 'p', extra: { keywords: ['precio', 'cuánto cuesta'] } }] });
+    assert.deepEqual(modelo.flujo.start.options['1'], { keywords: ['precio', 'cuánto cuesta'], text: 'Precios', next_state: 'p' });
 });
