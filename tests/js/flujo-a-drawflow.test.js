@@ -45,8 +45,7 @@ test('menú: una salida por opción, la oculta marcada y el destino inexistente 
     assert.equal(Object.keys(start.outputs).length, 3);
     assert.equal(start.outputs.output_1.connections.length, 1);
     assert.equal(start.outputs.output_2.connections.length, 0, 'no_existe no tiene caja');
-    assert.equal(start.outputs.output_3.connections.length, 0, '"salir" también va a end, que ya cuelga de la opción 1');
-    assert.match(start.html, /data-ir="end"/, 'por eso se muestra como etiqueta');
+    assert.equal(start.outputs.output_3.connections.length, 1, '"salir" también va a end: camino libre → línea');
     assert.match(start.html, /opcion-oculta/);
     assert.match(start.html, /no existe/);
 });

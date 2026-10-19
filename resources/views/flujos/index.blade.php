@@ -54,6 +54,7 @@
                     <th>Nombre</th>
                     <th>Slug</th>
                     <th class="text-center">Versiones</th>
+                    <th title="¿Todos los caminos del bot terminan bien? Lo calcula la misma revisión que el editor.">Diseño</th>
                     <th>Creado</th>
                     <th></th>
                 </tr>
@@ -64,6 +65,7 @@
                         <td>{{ $flujo->nombre }}</td>
                         <td><code>{{ $flujo->slug }}</code></td>
                         <td class="text-center">{{ $flujo->versiones_count }}</td>
+                        <td data-diseno="{{ $flujo->slug }}" data-url="{{ route('flujos.edit', $flujo) }}"><span class="text-body-secondary small">…</span></td>
                         <td>{{ $flujo->created_at->format('d/m/Y H:i') }}</td>
                         <td class="text-end text-nowrap">
                             <a href="{{ route('flujos.edit', $flujo) }}" class="btn btn-sm btn-outline-primary">Editar</a>
@@ -82,4 +84,14 @@
             </tbody>
         </table>
     @endif
+
+    {{-- Para la columna «Diseño»: el FLUJO y los nombres visibles de la última versión de cada flujo (lista.js). --}}
+    <script type="application/json" id="flujos-datos">@json($flujos->mapWithKeys(fn ($flujo) => [$flujo->slug => [
+        'FLUJO' => $flujo->ultimaVersion?->contenido['FLUJO'] ?? [],
+        'titulos' => $flujo->ultimaVersion?->contenido['_editor']['titulos'] ?? [],
+    ]]))</script>
 @endsection
+
+@push('scripts')
+    @vite('resources/js/lista.js')
+@endpush

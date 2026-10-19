@@ -127,11 +127,11 @@ const MARGEN_ATRAS = 100;
  *  - no es del árbol, el destino tiene opciones y no es start ni un antepasado (ej. varias cajas → end_or_menu) →
  *    copia: línea a una cajita "copia de vista" del destino dibujada junto al origen (el FLUJO no se duplica).
  *    Solo si `copias` está activado (interruptor ⧉ Copias del editor); si no, se ve como etiqueta ⇢.
- *  - destino a la izquierda (volver atrás, ej. "volver al menú") → etiqueta ↩.
- *  - no es del árbol (el destino ya cuelga de otra opción, ej. varias "No, gracias" → end) → etiqueta ⇢:
- *    el mapa muestra solo la jerarquía, sin haces de líneas hacia los estados compartidos.
- *  - es del árbol pero pasaría por detrás de otras cajas (`cruzan`, medido con geometria.js) → etiqueta ⇢.
- *  - si no → línea.
+ *  - destino a la izquierda o el mismo paso (volver atrás, ej. "volver al menú") → etiqueta ↩.
+ *  - pasaría por detrás de otras cajas (`cruzan`, medido con geometria.js en el editor) → etiqueta ⇢.
+ *  - si no → línea: también hacia un paso compartido (ej. varias opciones → Despedida) cuando el camino está libre
+ *    (decisión del usuario, 2026-10-19; antes solo las del árbol llevaban línea). Los haces grandes hacia atrás
+ *    (p. ej. 49 → «¿Algo más?») siguen siendo etiquetas porque vuelven hacia la izquierda o tapan cajas.
  * Es solo visual: el FLUJO no cambia.
  */
 export function tiposDeDibujo(flujo, posiciones, cruzan = new Set(), { arbol = arbolDeEstados(flujo), copias = false } = {}) {
@@ -145,8 +145,7 @@ export function tiposDeDibujo(flujo, posiciones, cruzan = new Set(), { arbol = a
     return Object.fromEntries(Object.entries(flujo).map(([nombre, estado]) => [nombre, salidas(estado).map(({ destino }, i) => {
         if (destino == null || !(destino in flujo)) return null;
         if (copias && !aristas.has(`${nombre}#${i}`) && esCompartidoConOpciones(flujo, destino) && !esAntepasado(destino, nombre)) return 'copia';
-        if (posiciones[destino].x < posiciones[nombre].x - MARGEN_ATRAS) return 'atajo-atras';
-        if (!aristas.has(`${nombre}#${i}`)) return 'atajo-cruce';
+        if (destino === nombre || posiciones[destino].x < posiciones[nombre].x - MARGEN_ATRAS) return 'atajo-atras';
         if (cruzan.has(`${nombre}#${i}`)) return 'atajo-cruce';
         return 'linea';
     })]));
@@ -165,17 +164,7 @@ export function vaHaciaAtras(posiciones, origen, destino) {
     return posiciones[destino].x < posiciones[origen].x - MARGEN_ATRAS;
 }
 
-/**
- * Devuelve { datos, resumen, nombrePorId, conexiones }:
- *  - datos: lo que recibe editor.import() de Drawflow.
- *  - resumen: { total, alcanzables, sinConexion }.
- *  - nombrePorId: Map id de Drawflow ("1") → nombre del estado; los ids cambian en cada dibujo.
- *  - copiaPorId: Map id de Drawflow → { clave, origen, indice, destino } de cada copia de vista (no son estados).
- *  - conexiones: { lineas, atajos, copias } (líneas a cajas reales, etiquetas y líneas a copias).
- * titulos: nombres visibles { identificador: "Nombre visible" } (contenido._editor.titulos).
- * cruzan: claves "origen#i" de las conexiones cuya línea pasaría por detrás de otras cajas (se ven como etiqueta).
- * copias: dibujar las copias de vista de los estados compartidos (interruptor ⧉ Copias).
- */
+
 export function flujoADrawflow(flujo, layout = {}, titulos = {}, cruzan = new Set(), { copias = false } = {}) {
     const nombres = Object.keys(flujo);
     const idDe = new Map(nombres.map((nombre, i) => [nombre, String(i + 1)]));

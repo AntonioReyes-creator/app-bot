@@ -193,3 +193,9 @@ li.abierta > .nav-fila .nav-accion { color: #6c757d; border-color: #dee2e6; }
     .nav-vineta { transition: none; }
 }
 .aviso-clic { cursor: pointer; }
+
+/* Semáforo del diseño (editor y lista): ✅ bien cerrado · ⚠ por revisar · ⛔ falla. */
+.diseno { font-size: .78rem; font-weight: 600; }
+.diseno-ok { background: #d1e7dd; color: #0a3622; }
+.diseno-revisar { background: #fff3cd; color: #664d03; cursor: pointer; }
+.diseno-falla { background: #f8d7da; color: #58151c; cursor: pointer; }

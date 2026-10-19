@@ -17,16 +17,16 @@ const flujo = {
 
 const caja = (datos, n) => Object.values(datos.drawflow.Home.data).find((x) => x.name === n);
 
-test('cajas cercanas: solo las conexiones del árbol llevan línea; volver atrás es ↩ y a un estado compartido es ⇢', () => {
+test('cajas cercanas: hacia un paso compartido también hay línea si el camino está libre; volver atrás es ↩', () => {
     // todo junto en pantalla: end (a la derecha) recibe 4 conexiones; menu_a vuelve a start (a la izquierda)
     const cerca = { start: { x: 40, y: 40 }, menu_a: { x: 400, y: 40 }, menu_b: { x: 400, y: 260 }, hoja: { x: 760, y: 260 }, end: { x: 760, y: 40 }, suelto: { x: 760, y: 480 } };
     const { datos, conexiones } = flujoADrawflow(flujo, cerca);
 
-    // árbol: start → menu_a, start → menu_b, start → end (la primera que llega a end), menu_b → hoja
-    assert.deepEqual(conexiones, { lineas: 4, atajos: 4, copias: 0 }, 'end no tiene opciones y start es antepasado: sin copias');
-    assert.equal(caja(datos, 'start').outputs.output_3.connections.length, 1, 'start → end es la del árbol: línea');
-    assert.equal(caja(datos, 'menu_a').outputs.output_2.connections.length, 0, 'menu_a → end: end ya cuelga de start');
-    assert.match(caja(datos, 'menu_a').html, /data-ir="end"[^>]*>&#8674; end/);
+    // las 4 que llegan a end son línea (nada se interpone); solo «Volver» a start es etiqueta ↩
+    assert.deepEqual(conexiones, { lineas: 7, atajos: 1, copias: 0 });
+    assert.equal(caja(datos, 'start').outputs.output_3.connections.length, 1, 'start → end');
+    assert.equal(caja(datos, 'menu_a').outputs.output_2.connections.length, 1, 'menu_a → end: compartido, camino libre → línea');
+    assert.equal(caja(datos, 'suelto').outputs.output_1.connections.length, 1, 'misma columna (end arriba) no cuenta como «atrás»');
     assert.equal(caja(datos, 'menu_a').outputs.output_1.connections.length, 0, 'volver a start = sin línea');
     assert.match(caja(datos, 'menu_a').html, /data-ir="start"[^>]*>&#8617; start/);
     assert.doesNotMatch(caja(datos, 'start').html, /caja-atajo/);
@@ -151,4 +151,12 @@ test('ordenar: en una cadena se alinean las bolitas (entrada del hijo frente a l
     assert.equal(alReves.w.y + 80, alReves.tema_b.y + 20);
     assert.ok(alReves.tema_b.y >= alReves.z.y + 100, 'tema_b sigue debajo de la rama de tema_a');
     sinEncimarse(alReves, alturas);
+});
+
+test('regla de dibujo: una opción que vuelve al mismo paso es ↩ (sin línea en bucle) y si taparía cajas es ⇢', () => {
+    const f = { start: { message: 'x', options: { 1: { text: 'Otra vez', next_state: 'start' }, 2: { text: 'Fin', next_state: 'end' } } }, end: { message: 'y' } };
+    const pos = { start: { x: 40, y: 40 }, end: { x: 400, y: 40 } };
+
+    assert.deepEqual(tiposDeDibujo(f, pos).start, ['atajo-atras', 'linea']);
+    assert.deepEqual(tiposDeDibujo(f, pos, new Set(['start#1'])).start, ['atajo-atras', 'atajo-cruce']);
 });

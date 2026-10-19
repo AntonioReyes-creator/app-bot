@@ -13,6 +13,8 @@
         </div>
         <div class="d-flex align-items-center gap-3">
             <span id="resumen" class="text-body-secondary"></span>
+            {{-- Semáforo del diseño (revision.js): ✅ bien cerrado · ⚠ por revisar · ⛔ falla. Clic: ver los avisos. --}}
+            <button type="button" id="diseno" class="badge diseno border-0"></button>
             <span id="sin-guardar" class="badge text-bg-warning d-none">Cambios sin guardar</span>
             <span id="guardado" class="text-success small d-none"></span>
             <button type="button" id="guardar" class="btn btn-primary" data-url="{{ route('flujos.guardar', $flujo) }}"

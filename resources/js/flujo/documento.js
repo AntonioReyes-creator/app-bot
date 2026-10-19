@@ -167,7 +167,7 @@ export function resumirDocumento(secciones, flujo = null) {
         for (const salida of s.salidas) {
             const opcion = salida.clave === null ? 'su salida' : `la opción ${salida.clave}`;
             if (salida.modo === 'roto') avisos.push({ gravedad: 'error', nombre: s.nombre, texto: `${quien}: ${opcion} va a «${salida.destino}», que no existe.` });
-            if (salida.modo === 'pendiente') avisos.push({ gravedad: 'aviso', nombre: s.nombre, texto: `${quien}: ${opcion} no está conectada.` });
+            if (salida.modo === 'pendiente') avisos.push({ gravedad: 'error', nombre: s.nombre, texto: `${quien}: ${opcion} no está conectada.` }); // elegirla rompe la conversación
         }
         if (s.sinConexion && s.nivel === 0) { // un aviso por rama suelta (lo que cuelga de ella tampoco se alcanza)
             const debajo = secciones.filter((x) => x.numero.startsWith(`${s.numero}.`)).length;

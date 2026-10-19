@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pareceQuePideDatos, revisarFlujo } from '../../resources/js/flujo/revision.js';
+import { estadoDelDiseno, pareceQuePideDatos, pasosSinCierre, revisarFlujo } from '../../resources/js/flujo/revision.js';
 
 const textos = (flujo) => revisarFlujo(flujo).map((p) => `${p.gravedad} ${p.nombre}: ${p.texto}`);
 
@@ -53,3 +53,58 @@ test('pareceQuePideDatos: verbos de pedir texto, sin confundir «ingrese a la we
     for (const m of ['Escríbeme tu pedido', 'Indícanos tu distrito', 'Envíanos una foto', 'Dinos tu nombre']) assert.ok(pareceQuePideDatos(m), m);
     for (const m of ['Ingrese a la web', 'Gracias por usar nuestro canal digital', 'Elige una opción']) assert.ok(!pareceQuePideDatos(m), m);
 });
+
+// --- Recorrido: desde cada paso alcanzable debe haber un camino hasta un cierre ---
+
+test('pasosSinCierre: las vueltas están bien si hay salida; sin salida son trampas', () => {
+    assert.deepEqual([...pasosSinCierre(bien)], [], 'el flujo correcto no tiene trampas');
+
+    const vueltas = { start: { message: 'Hola', options: { 1: { text: 'A', next_state: 'a' } } },
+        a: { message: 'A', options: { 1: { text: 'B', next_state: 'b' }, 2: { text: 'Volver', next_state: 'start' } } },
+        b: { message: 'B', options: { 1: { text: 'Volver', next_state: 'a' } } }, end: { message: 'Chau' } };
+    assert.deepEqual([...pasosSinCierre(vueltas)].sort(), ['a', 'b', 'start'], 'solo vueltas, nunca se llega a la Despedida');
+
+    vueltas.b.options[2] = { text: 'Terminar', next_state: 'end' };
+    assert.deepEqual([...pasosSinCierre(vueltas)], [], 'con una sola salida, ya no hay trampa');
+    assert.deepEqual([...pasosSinCierre({ ...bien, suelto: { message: 'x' } })], [], 'lo que no se alcanza no cuenta (tiene su propio aviso)');
+});
+
+test('revisión de recorrido: se avisa en el ORIGEN del problema y se dice cuántos pasos arrastra', () => {
+    const f = { start: { message: 'Hola', options: { 1: { text: 'Viajes', next_state: 'viajes' }, 2: { text: 'Precios', next_state: 'precios' }, 3: { text: 'Salir', next_state: 'end' } } },
+        viajes: { message: 'Elige', options: { 1: { text: 'Lima', next_state: 'lima' }, 2: { text: 'Volver', next_state: 'viajes' } } },
+        lima: { message: 'Lima', options: { 1: { text: 'Volver', next_state: 'viajes' } } },
+        precios: { message: 'S/ 10' },
+        end: { message: 'Chau' } };
+    const de = (flujo) => revisarFlujo(flujo).filter((p) => p.codigo === 'sin-cierre' || p.codigo === 'mudo');
+
+    // viajes ↔ lima dan vueltas sin salida: un solo aviso, en viajes (el primero); precios: final mudo (ya avisado).
+    assert.deepEqual(de(f).map((p) => `${p.codigo} ${p.nombre}`), ['mudo precios', 'sin-cierre viajes']);
+    assert.match(de(f)[1].texto, /^desde aquí no hay forma de terminar la conversación: conecta/);
+
+    delete f.start.options[3]; // sin «Salir», tampoco la Bienvenida puede terminar
+    const r = de(f);
+    assert.match(r.find((p) => p.nombre === 'viajes').texto, /y por eso tampoco desde el paso que lleva aquí/);
+    assert.match(r.find((p) => p.nombre === 'precios').texto, /Por eso tampoco pueden terminar el paso que lleva aquí\./);
+    assert.match(r.find((p) => p.nombre === 'start').texto, /^desde el inicio no hay ningún camino que termine la conversación/);
+});
+
+test('revisión de recorrido: un «¿Algo más?» sin salidas al que llegan 3 pasos da UN aviso de recorrido, en «¿Algo más?»', () => {
+    const f = { start: { message: 'Hola', options: { 1: { text: 'A', next_state: 'a' }, 2: { text: 'B', next_state: 'b' }, 3: { text: 'C', next_state: 'c' }, 4: { text: 'Fin', next_state: 'end' } } },
+        a: { message: 'a', next_state: 'end_or_menu' }, b: { message: 'b', next_state: 'end_or_menu' }, c: { message: 'c', next_state: 'end_or_menu' },
+        end_or_menu: { message: '¿Algo más?', options: { 1: { text: 'Sí', next_state: null }, 2: { text: 'No', next_state: null } } },
+        end: { message: 'Chau' } };
+    const r = revisarFlujo(f).filter((p) => p.codigo === 'sin-cierre');
+
+    assert.deepEqual(r.map((p) => p.nombre), ['end_or_menu']);
+    assert.match(r[0].texto, /y por eso tampoco desde los 3 pasos que llevan aquí/);
+});
+
+test('estadoDelDiseno: ✅ sin avisos, ⚠ solo avisos, ⛔ si algo hace fallar la conversación', () => {
+    assert.equal(estadoDelDiseno([]).nivel, 'ok');
+    assert.deepEqual(estadoDelDiseno([{ gravedad: 'aviso' }, { gravedad: 'aviso' }]).texto, '2 por revisar');
+    const falla = estadoDelDiseno([{ gravedad: 'error' }, { gravedad: 'aviso' }]);
+    assert.equal(falla.nivel, 'falla');
+    assert.equal(falla.texto, '1 falla');
+    assert.match(falla.detalle, /y 1 más por revisar/);
+});
+

@@ -23,7 +23,7 @@ class FlujoController extends Controller
      */
     public function index(): View
     {
-        $flujos = Flujo::withCount('versiones')->latest()->get();
+        $flujos = Flujo::withCount('versiones')->with('ultimaVersion')->latest()->get();
 
         return view('flujos.index', compact('flujos'));
     }

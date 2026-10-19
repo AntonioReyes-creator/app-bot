@@ -58,7 +58,7 @@ test('documento en Markdown: resumen, avisos, títulos legibles, mensajes citado
     const md = documentoEnMarkdown(flujo, {}, 'Mi bot');
 
     assert.match(md, /^# Mi bot\n\n7 pasos: 3 menús, 3 pasos, 1 finales \(3 especiales, 3 compartidos\)\./);
-    assert.match(md, /## Avisos \(3\)\n\n- ⚠ §1\.1 A: la opción 3 va a «no_existe», que no existe\.\n- • §1\.3 ❓ ¿Algo más\?: la opción 3 no está conectada\.\n- • §2 Nadie llega: ningún camino desde el inicio llega aquí\./);
+    assert.match(md, /## Avisos \(3\)\n\n- ⚠ §1\.1 A: la opción 3 va a «no_existe», que no existe\.\n- ⚠ §1\.3 ❓ ¿Algo más\?: la opción 3 no está conectada\.\n- • §2 Nadie llega: ningún camino desde el inicio llega aquí\./);
     assert.match(md, /\n- \*\*§1 👋 Bienvenida \(start\)\*\* · Menú · lo usan 2 pasos\n  > Hola\n  \*ℹ Primer mensaje/);
     assert.match(md, /\n  - 1\. A → §1\.1 A \(tema_a\)\n/);
     assert.match(md, /- \*\*§1\.1\.1 Info \(paso_a\)\*\* · Paso\n      > Info A\n      \*ℹ Al llegar aquí eligiendo una opción, se envía en el mismo mensaje que §1\.3 ❓ ¿Algo más\? y sus opciones/);
@@ -117,7 +117,7 @@ test('resumen: cuenta pasos por tipo y lista avisos (rotos, sin conectar, sin co
 
     assert.deepEqual({ ...r, avisos: r.avisos.map((a) => [a.gravedad, a.nombre]) }, {
         total: 7, menus: 3, pasos: 3, finales: 1, especiales: 3, compartidos: 3,
-        avisos: [['error', 'tema_a'], ['aviso', 'end_or_menu'], ['aviso', 'suelto']],
+        avisos: [['error', 'tema_a'], ['error', 'end_or_menu'], ['aviso', 'suelto']],
     });
 });
 

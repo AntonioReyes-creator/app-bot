@@ -1,12 +1,12 @@
 import Drawflow from 'drawflow';
 import { Modal, Offcanvas } from 'bootstrap';
-import { arbolDeEstados, calcularPosiciones, clasificar, escapar, flujoADrawflow, salidas, tiposDeDibujo, vaHaciaAtras } from './flujo/flujo-a-drawflow.js';
+import { calcularPosiciones, clasificar, escapar, flujoADrawflow, salidas, tiposDeDibujo, vaHaciaAtras } from './flujo/flujo-a-drawflow.js';
 import { conexionesQueCruzan } from './flujo/geometria.js';
 import { AVANZADOS, BASICOS, PATRONES_SISTEMA, describirSistema, esEstadoSistema, etiquetaSistema, iconoSistema } from './flujo/estados-sistema.js';
 import { ordenarArbol } from './flujo/ordenar.js';
 import { iniciar, normalizar as normalizarTexto, responder } from './flujo/simulador.js';
 import { TIPOS, armarDocumento, documentoEnMarkdown, fichaDePaso, resumirDocumento, rutaHasta, titulosDelFlujo } from './flujo/documento.js';
-import { COMANDOS_DEL_MOTOR, pareceQuePideDatos } from './flujo/revision.js';
+import { COMANDOS_DEL_MOTOR, estadoDelDiseno, pareceQuePideDatos } from './flujo/revision.js';
 import { EMOJIS, MAXIMO_CARACTERES, envolver, formatearWhatsApp, insertar, marcarLineas, mensajeDelBot } from './flujo/whatsapp.js';
 import {
     agregarPasoEspecial, aplicarEdicion, conectarYNombrar, contenidoParaGuardar, crearConectado, eliminarEstado, enlazarPareja, fijarDestino,
@@ -72,6 +72,7 @@ if (contenedor) {
         let texto = `${total} estados · ${alcanzables} alcanzables desde start`;
         if (sinConexion > 0) texto += ` · ${sinConexion} sin conexión`;
         document.getElementById('resumen').textContent = texto;
+        pintarDiseno();
         marcarEstadoSimulado(); // al redibujar se crean cajas nuevas: se vuelve a marcar la del simulador
         if (documentoAbierto) pintarDocumento(); // el documento sigue al modelo
     }
@@ -231,13 +232,15 @@ if (contenedor) {
             if (nodo) cajas[clave] = aLienzo(nodo.getBoundingClientRect());
         }
 
-        const { aristas } = arbolDeEstados(modelo.flujo); // solo las del árbol llevan línea
+        // Se miden todas las que podrían ser línea (también hacia pasos compartidos): no las que vuelven atrás ni las
+        // que van a una copia de vista (⧉ Copias), que ya tienen su propio dibujo.
+        const tipos = tiposDeDibujo(modelo.flujo, modelo.layout, new Set(), { copias: mostrarCopias });
         const conexiones = [];
         for (const [nombre, nodo] of nodoDe) {
             const bolitas = nodo.querySelectorAll('.outputs .output');
             salidas(modelo.flujo[nombre]).forEach(({ destino }, i) => {
                 if (!nodoDe.has(destino) || destino === nombre || !bolitas[i]) return;
-                if (vaHaciaAtras(modelo.layout, nombre, destino) || !aristas.has(`${nombre}#${i}`)) return; // ya son etiqueta
+                if (vaHaciaAtras(modelo.layout, nombre, destino) || tipos[nombre]?.[i] === 'copia') return; // ya son etiqueta o copia
                 const entrada = nodoDe.get(destino).querySelector('.inputs .input');
                 if (entrada) conexiones.push({ clave: `${nombre}#${i}`, origen: nombre, destino, p1: centro(bolitas[i]), p2: centro(entrada) });
             });
@@ -518,6 +521,17 @@ if (contenedor) {
         aviso.onclick = alClic;
         clearTimeout(temporizadorAviso);
         temporizadorAviso = setTimeout(() => aviso.classList.add('d-none'), ms);
+    }
+
+    /** Semáforo del diseño: los mismos avisos que el panel 📄 (recorrido, revisión, sin conectar, sueltos). */
+    function pintarDiseno() {
+        const { avisos } = resumirDocumento(armarDocumento(modelo.flujo, modelo.titulos).secciones, modelo.flujo);
+        const estado = estadoDelDiseno(avisos);
+        const boton = document.getElementById('diseno');
+        boton.textContent = `${estado.icono} ${estado.texto}`;
+        boton.className = `badge diseno border-0 diseno-${estado.nivel}`;
+        boton.title = estado.detalle + (avisos.length ? ' Clic para verlos.' : '');
+        boton.onclick = avisos.length ? verAvisos : null;
     }
 
     /** Abre el panel 📄 con la lista de avisos desplegada. */
