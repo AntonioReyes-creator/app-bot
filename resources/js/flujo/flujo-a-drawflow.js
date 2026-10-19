@@ -253,7 +253,7 @@ export function flujoADrawflow(flujo, layout = {}, titulos = {}, cruzan = new Se
 
 function htmlCaja(nombre, estado, tipo, sistema, lista, flujo, tiposSalida = [], titulos = {}) {
     const visible = (id) => titulos[id] || id; // nombre visible de un estado (o su identificador)
-    const candado = sistema ? '<span class="caja-candado" title="Estado del sistema: el nombre no se puede cambiar">&#128274;</span>' : '';
+    const candado = sistema ? '<span class="caja-candado" title="Paso especial: su nombre no cambia">&#128274;</span>' : '';
 
     const filas = lista.map(({ clave, texto, destino, oculta }, i) => {
         const sinConectar = destino == null;
@@ -264,7 +264,7 @@ function htmlCaja(nombre, estado, tipo, sistema, lista, flujo, tiposSalida = [],
         if (tiposSalida[i] === 'atajo-atras' || tiposSalida[i] === 'atajo-cruce') {
             // Etiqueta en vez de línea; clic = ir a ese estado. ↩ vuelve atrás; ⇢ el estado está en otra rama del árbol.
             const simbolo = tiposSalida[i] === 'atajo-atras' ? '&#8617;' : '&#8674;';
-            destinoHtml = `<button type="button" class="caja-atajo" data-ir="${escapar(destino)}" title="Está en otra parte del mapa: clic para ir a «${escapar(visible(destino))}»">${simbolo} ${escapar(visible(destino))}</button>`;
+            destinoHtml = `<button type="button" class="caja-atajo" data-ir="${escapar(destino)}" title="Ir a «${escapar(visible(destino))}»">${simbolo} ${escapar(visible(destino))}</button>`;
         }
         // data-salida: editor.js coloca la bolita nº i a la altura de esta fila.
         return `<li data-salida="${i}" class="${oculta ? 'opcion-oculta' : ''}${roto ? ' destino-roto' : ''}${sinConectar ? ' destino-pendiente' : ''}">`
@@ -277,9 +277,9 @@ function htmlCaja(nombre, estado, tipo, sistema, lista, flujo, tiposSalida = [],
         + `<div class="caja-cabecera"><div class="caja-nombres${titulos[nombre] ? ' con-titulo' : ''}">`
         + (titulos[nombre] ? `<span class="caja-titulo">${escapar(titulos[nombre])}</span>` : '')
         + `<span class="caja-nombre">${escapar(nombre)}</span></div>${candado}`
-        + (etiquetaSistema(nombre) ? `<span class="caja-etiqueta" title="Paso especial: el bot ya sabe hacerlo">${iconoSistema(nombre)} ${etiquetaSistema(nombre)}</span>` : '')
+        + (etiquetaSistema(nombre) ? `<span class="caja-etiqueta" title="Paso especial del bot">${iconoSistema(nombre)} ${etiquetaSistema(nombre)}</span>` : '')
         + `<span class="caja-tipo">${ETIQUETAS[tipo]}</span>`
-        + `<button type="button" class="caja-editar" data-editar title="Editar (o doble clic en la caja)">&#9998;</button></div>`
+        + `<button type="button" class="caja-editar" data-editar title="Editar (o doble clic)">&#9998;</button></div>`
         + `<div class="caja-mensaje">${estado.message ? escapar(estado.message) : '<span class="caja-vacio">(sin mensaje)</span>'}</div>`
         + (filas.length ? `<ul class="caja-salidas">${filas.join('')}</ul>` : '')
         + `</div>`;
@@ -302,7 +302,7 @@ function htmlCopia(nombre, flujo, titulos = {}) {
     });
     const nombreHtml = etiquetaSistema(nombre) ? `${iconoSistema(nombre)} ${etiquetaSistema(nombre)}` : escapar(visible(nombre));
 
-    return `<div class="copia-pildora" title="Copia de vista de «${escapar(visible(nombre))}» (${escapar(nombre)}) · doble clic: ir a la caja real">`
+    return `<div class="copia-pildora" title="Copia de «${escapar(visible(nombre))}» · doble clic: ir a la real">`
         + `<div class="copia-nombre">&#10697; ${nombreHtml}</div>`
         + `<div class="copia-opciones">${opciones.join('')}</div>`
         + `</div>`;

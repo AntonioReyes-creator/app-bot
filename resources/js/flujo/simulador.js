@@ -9,7 +9,7 @@
 /** Áreas de ejemplo para {{departamentos}}: en el motor salen de la base de datos (las que tienen asesores). */
 export const AREAS_EJEMPLO = ['Área de ejemplo 1', 'Área de ejemplo 2', 'Área de ejemplo 3'];
 const LISTA_AREAS = AREAS_EJEMPLO.map((area, i) => `${i + 1}. ${area}`).join('\n');
-const NOTA_AREAS = 'La lista de áreas la arma el sistema con las que tienen asesores; aquí se muestra un ejemplo.';
+const NOTA_AREAS = 'Lista de ejemplo: la real la arma el sistema.';
 
 /** Texto por defecto de la encuesta de salida (en el motor puede cambiarse en la base de datos). */
 export const ENCUESTA_SALIDA = 'Por favor, califica tu satisfacción con la atención recibida del 1 al 10.';
@@ -74,7 +74,7 @@ const opcionesGuion = (estado) => `\n\n${opciones(estado).map(([c, o]) => `${c}.
 /** Salida por comando o por una opción que lleva a end (l.451, l.4947): encuesta de salida. */
 const salir = () => ({
     estado: 'calificacion_servicio',
-    mensajes: [{ texto: ENCUESTA_SALIDA, nota: 'Encuesta de salida del sistema (su texto se configura fuera del flujo).' }],
+    mensajes: [{ texto: ENCUESTA_SALIDA, nota: 'Encuesta del sistema (no es parte del flujo).' }],
 });
 
 /**
@@ -94,12 +94,12 @@ export function combinaCon(flujo, destino) {
 function entrar(flujo, destino, desde) {
     // Opción sin conectar o que va a un paso borrado: el simulador lo dice y se queda donde estaba (QA H7/H14).
     if (destino == null) {
-        return { estado: desde, mensajes: [{ texto: '⚠️ (Esta opción todavía no lleva a ningún paso.)', nota: 'En el editor: conéctala desde su bolita o desde 📄 Recorrer el flujo.' }] };
+        return { estado: desde, mensajes: [{ texto: '⚠️ (Esta opción aún no lleva a ningún paso.)', nota: 'Conéctala en el editor.' }] };
     }
     if (destino === 'end') return salir();
     const siguiente = flujo[destino];
     if (!siguiente) {
-        return { estado: desde, mensajes: [{ texto: '⚠️ (Esta opción lleva a un paso que ya no existe.)', nota: `El paso «${destino}» fue borrado: vuelve a conectar la opción.` }] };
+        return { estado: desde, mensajes: [{ texto: '⚠️ (Esta opción lleva a un paso que ya no existe.)', nota: `El paso «${destino}» ya no existe: reconéctala.` }] };
     }
 
     let texto = conAreas(siguiente.message);
@@ -165,13 +165,13 @@ export function responder(flujo, estadoActual, texto) {
         const espera = flujo.esperando_agente ? 'esperando_agente' : estadoActual;
         return {
             estado: espera,
-            mensajes: [{ texto: `${flujo[espera]?.message ?? ''}.`, nota: 'El sistema guarda los datos y crea el ticket para un asesor.' }],
+            mensajes: [{ texto: `${flujo[espera]?.message ?? ''}.`, nota: 'Aquí se guardan los datos para un asesor.' }],
         };
     }
 
     // Esperando a un asesor (l.2348): repite el aviso.
     if (/^esperando_agente/.test(estadoActual)) {
-        return { estado: estadoActual, mensajes: [{ texto: `${estado.message ?? ''}.`, nota: 'Aquí la conversación la continúa un asesor.' }] };
+        return { estado: estadoActual, mensajes: [{ texto: `${estado.message ?? ''}.`, nota: 'Aquí sigue un asesor.' }] };
     }
 
     // Menú: elegir una opción.

@@ -154,7 +154,7 @@ export function nombrePatron(flujo, { antes, despues }, parte) {
     const limpio = String(parte ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
         .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40).replace(/_+$/, '');
     const nombre = `${antes}${limpio}${despues}`;
-    if (!limpio) return { nombre, error: 'Escribe el nombre del área (ej. notificaciones).' };
+    if (!limpio) return { nombre, error: 'Escribe el nombre del área.' };
     return { nombre, error: validarNombre(flujo, nombre) };
 }
 
@@ -168,7 +168,7 @@ export function sistemaDisponibles(flujo, { avanzados = false } = {}) {
 export function validarNombre(flujo, nombre) {
     if (!nombre) return 'Escribe un nombre.';
     if (!PATRON_NOMBRE.test(nombre)) {
-        return 'Usa solo minúsculas, números y guion bajo, empezando por una letra (ej. menu_certificados).';
+        return 'Solo minúsculas, números y _ (ej. menu_pagos).';
     }
     if (nombre in flujo) return `Ya existe un estado llamado «${nombre}».`;
     return null;
@@ -260,7 +260,7 @@ export function aplicarEdicion(modelo, nombre, cambios) {
 
     if (nuevoNombre !== nombre) {
         if (esEstadoSistema(nombre)) {
-            return { campo: 'nombre', mensaje: `«${nombre}» es un estado del sistema: su nombre no se puede cambiar.` };
+            return { campo: 'nombre', mensaje: `«${nombre}» es un paso especial: su nombre no cambia.` };
         }
         const error = validarNombre(modelo.flujo, nuevoNombre);
         if (error) return { campo: 'nombre', mensaje: error };
@@ -268,7 +268,7 @@ export function aplicarEdicion(modelo, nombre, cambios) {
 
     // QA H15: WhatsApp no envía más de MAXIMO_CARACTERES.
     if (String(cambios.message ?? '').length > MAXIMO_CARACTERES) {
-        return { campo: 'mensaje', mensaje: `El mensaje tiene ${cambios.message.length} caracteres; WhatsApp admite hasta ${MAXIMO_CARACTERES}. Acórtalo o divídelo en dos pasos.` };
+        return { campo: 'mensaje', mensaje: `Tiene ${cambios.message.length} caracteres; el máximo es ${MAXIMO_CARACTERES}.` };
     }
 
     let opciones = null;
@@ -281,7 +281,7 @@ export function aplicarEdicion(modelo, nombre, cambios) {
             if (!c) return { campo: 'clave', indice, mensaje: 'Cada opción necesita un número o clave.' };
             if (c in opciones) return { campo: 'clave', indice, mensaje: `La opción «${c}» está repetida.` };
             // QA H10: sin texto, la persona vería solo «1.».
-            if (!String(text ?? '').trim()) return { campo: 'texto', indice, mensaje: `Escribe el texto de la opción «${c}»: es lo que verá la persona.` };
+            if (!String(text ?? '').trim()) return { campo: 'texto', indice, mensaje: `Escribe el texto de la opción «${c}».` };
             opciones[c] = { ...extra, text, next_state: next_state || null };
         }
     }

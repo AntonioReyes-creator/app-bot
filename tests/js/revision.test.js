@@ -21,12 +21,12 @@ test('revisión: un flujo correcto no tiene avisos (sin falsos positivos: «ingr
 test('revisión H3 / H15: mensaje vacío y mensaje más largo que el límite de WhatsApp', () => {
     const r = textos({ ...bien, end: { message: '  ' }, info: { message: 'x'.repeat(4100), next_state: 'end_or_menu' } });
     assert.ok(r.some((t) => /^error end: no tiene mensaje/.test(t)));
-    assert.ok(r.some((t) => /^error info: el mensaje tiene 4100 caracteres; WhatsApp admite hasta 4096/.test(t)));
+    assert.ok(r.some((t) => /^error info: tiene 4100 caracteres \(máximo 4096\)/.test(t)));
 });
 
 test('revisión H13: un estado sin salida que no es la Despedida deja al bot mudo (encuesta_fin y esperando_agente sí sirven)', () => {
     const r = textos({ ...bien, precios: { message: 'S/ 10' }, encuesta_fin: { message: 'Gracias' }, esperando_agente_ventas: { message: 'x' } });
-    assert.deepEqual(r.filter((t) => t.includes('ya no responde')).map((t) => t.split(':')[0]), ['error precios']);
+    assert.deepEqual(r.filter((t) => t.includes('deja de responder')).map((t) => t.split(':')[0]), ['error precios']);
 });
 
 test('revisión H1: un paso que pide escribir algo y se une con un estado que no espera texto', () => {
@@ -35,8 +35,8 @@ test('revisión H1: un paso que pide escribir algo y se une con un estado que no
         nota: { message: 'Indícanos tu dirección', next_state: 'end_or_menu' },
         pregunta_final: { message: '¿Algo que agregar?', next_state: 'end' },
         datos: { message: 'Escribe tu DNI', next_state: 'mas_informacion' } });
-    assert.match(r.find((t) => t.startsWith('aviso pedido')), /la conversación termina: la respuesta se pierde/);
-    assert.match(r.find((t) => t.startsWith('aviso nota')), /se tomará como una opción/);
+    assert.match(r.find((t) => t.startsWith('aviso pedido')), /el chat termina enseguida/);
+    assert.match(r.find((t) => t.startsWith('aviso nota')), /llega junto al menú/);
     assert.ok(r.some((t) => t.startsWith('aviso pregunta_final')), 'pregunta + cierre');
     assert.ok(!r.some((t) => t.startsWith('aviso datos')), 'mas_informacion sí espera los datos');
 });
@@ -46,7 +46,7 @@ test('revisión H10 / H12: opción sin texto y palabra que el motor usa como com
         1: { text: '', next_state: 'info' }, menu: { text: 'Ver menú', next_state: 'start' }, 2: { text: 'Fin', next_state: 'info' } } } });
     assert.ok(r.some((t) => /^aviso start: la opción 1 no tiene texto/.test(t)));
     assert.ok(!r.some((t) => t.includes('«menu»')), '«menu» → start hace lo mismo que el comando');
-    assert.ok(r.some((t) => /la opción «fin» es un comando del bot \(termina el chat\)/.test(t)));
+    assert.ok(r.some((t) => /«fin» es un comando del bot \(termina el chat\)/.test(t)));
 });
 
 test('pareceQuePideDatos: verbos de pedir texto, sin confundir «ingrese a la web» ni «canal digital»', () => {
@@ -79,13 +79,13 @@ test('revisión de recorrido: se avisa en el ORIGEN del problema y se dice cuán
 
     // viajes ↔ lima dan vueltas sin salida: un solo aviso, en viajes (el primero); precios: final mudo (ya avisado).
     assert.deepEqual(de(f).map((p) => `${p.codigo} ${p.nombre}`), ['mudo precios', 'sin-cierre viajes']);
-    assert.match(de(f)[1].texto, /^desde aquí no hay forma de terminar la conversación: conecta/);
+    assert.match(de(f)[1].texto, /^desde aquí no se puede terminar: conéctalo/);
 
     delete f.start.options[3]; // sin «Salir», tampoco la Bienvenida puede terminar
     const r = de(f);
-    assert.match(r.find((p) => p.nombre === 'viajes').texto, /y por eso tampoco desde el paso que lleva aquí/);
-    assert.match(r.find((p) => p.nombre === 'precios').texto, /Por eso tampoco pueden terminar el paso que lleva aquí\./);
-    assert.match(r.find((p) => p.nombre === 'start').texto, /^desde el inicio no hay ningún camino que termine la conversación/);
+    assert.match(r.find((p) => p.nombre === 'viajes').texto, /\(afecta a 1 paso más\)/);
+    assert.match(r.find((p) => p.nombre === 'precios').texto, /\(afecta a 1 paso más\)/);
+    assert.match(r.find((p) => p.nombre === 'start').texto, /^ningún camino termina el chat/);
 });
 
 test('revisión de recorrido: un «¿Algo más?» sin salidas al que llegan 3 pasos da UN aviso de recorrido, en «¿Algo más?»', () => {
@@ -96,7 +96,7 @@ test('revisión de recorrido: un «¿Algo más?» sin salidas al que llegan 3 pa
     const r = revisarFlujo(f).filter((p) => p.codigo === 'sin-cierre');
 
     assert.deepEqual(r.map((p) => p.nombre), ['end_or_menu']);
-    assert.match(r[0].texto, /y por eso tampoco desde los 3 pasos que llevan aquí/);
+    assert.match(r[0].texto, /\(afecta a 3 pasos más\)/);
 });
 
 test('estadoDelDiseno: ✅ sin avisos, ⚠ solo avisos, ⛔ si algo hace fallar la conversación', () => {

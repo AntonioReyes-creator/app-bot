@@ -133,12 +133,11 @@ if (contenedor) {
             if (problemas.length) {
                 const uno = problemas.length === 1;
                 const graves = problemas.filter((p) => p.gravedad === 'error').length;
-                avisar(`Guardado. Hay ${uno ? 'una cosa' : `${problemas.length} cosas`} por revisar`
-                    + `${graves ? ` (${graves} afecta${graves > 1 ? 'n' : ''} a la conversación)` : ''}. Clic aquí para ${uno ? 'verla' : 'verlas'}.`,
-                'warning', { ms: 8000, alClic: verAvisos });
+                avisar(`Guardado · ${uno ? '1 cosa' : `${problemas.length} cosas`} por revisar${graves ? ' (⛔)' : ''}. Clic para ver.`,
+                    'warning', { ms: 8000, alClic: verAvisos });
             }
         } catch {
-            avisar('No se pudo guardar: sin conexión con el servidor.');
+            avisar('No se pudo guardar: sin conexión.');
         } finally {
             botonGuardar.disabled = false;
             botonGuardar.textContent = 'Guardar';
@@ -159,10 +158,9 @@ if (contenedor) {
 
         const { avisos } = resumirDocumento(armarDocumento(modelo.flujo, modelo.titulos).secciones, modelo.flujo);
         if (avisos.length) {
-            avisar(`Exportado ${botonExportar.dataset.archivo}. Ojo: hay ${avisos.length === 1 ? 'una cosa' : `${avisos.length} cosas`} por revisar. Clic aquí para ${avisos.length === 1 ? 'verla' : 'verlas'}.`,
-                'warning', { ms: 8000, alClic: verAvisos });
+            avisar(`Exportado · ${avisos.length === 1 ? '1 cosa' : `${avisos.length} cosas`} por revisar. Clic para ver.`, 'warning', { ms: 8000, alClic: verAvisos });
         } else {
-            avisar(`Exportado ${botonExportar.dataset.archivo}.`, 'success');
+            avisar('Exportado.', 'success');
         }
     });
     document.addEventListener('keydown', (evento) => {
@@ -258,7 +256,7 @@ if (contenedor) {
 
         const copia = copiaPorId.get(String(id));
         if (copia) { // una copia no se borra: vuelve al redibujar
-            avisar(`Es una copia de vista de «${tituloDe(modelo, copia.destino)}». Para quitarla, borra su línea (desconecta esa opción).`);
+            avisar(`Es solo una copia de «${tituloDe(modelo, copia.destino)}»: para quitarla, borra su línea.`);
             dibujar();
             return;
         }
@@ -266,7 +264,7 @@ if (contenedor) {
         if (eliminarEstado(modelo, nombre)) {
             marcarCambios();
         } else {
-            avisar('«start» es el inicio del bot y no se puede borrar.');
+            avisar('La Bienvenida no se puede borrar.');
         }
 
         dibujar();
@@ -530,7 +528,7 @@ if (contenedor) {
         const boton = document.getElementById('diseno');
         boton.textContent = `${estado.icono} ${estado.texto}`;
         boton.className = `badge diseno border-0 diseno-${estado.nivel}`;
-        boton.title = estado.detalle + (avisos.length ? ' Clic para verlos.' : '');
+        boton.title = estado.detalle + (avisos.length ? ' Clic para ver.' : '');
         boton.onclick = avisos.length ? verAvisos : null;
     }
 
@@ -619,8 +617,8 @@ if (contenedor) {
         modalSistema.hide();
         irA(nombre);
         const leer = (n) => `«${etiquetaSistema(n) ?? n}»`;
-        const con = creados.length > 1 ? ` junto con ${creados.slice(1).map(leer).join(', ')}` : '';
-        avisar(`${leer(nombre)} añadido${con}, ya armado. Conéctalo desde una opción (arrastra su bolita o clic derecho en ella).`, 'success');
+        const con = creados.length > 1 ? ` (con ${creados.slice(1).map(leer).join(', ')})` : '';
+        avisar(`${leer(nombre)} añadido${con}. Conéctalo desde una opción.`, 'success');
     }
 
     // Por patrón: se ve el nombre final mientras se escribe y se valida antes de añadir.
@@ -724,16 +722,16 @@ if (contenedor) {
         campoTitulo.placeholder = nombre;
         sincronizarIdentificador = esNuevo(modelo, nombre);
         document.getElementById('estado-nombre-ayuda').textContent = sistema
-            ? 'Estado del sistema: el motor lo reconoce por este identificador; no cambia.'
+            ? 'Paso especial: no cambia.'
             : sincronizarIdentificador
-                ? 'Estado nuevo: se actualiza con el nombre visible hasta que el flujo se publique.'
-                : 'Fijo: ya existía (o ya se publicó). Cambiarlo rompería las conversaciones en curso.';
+                ? 'Se ajusta solo al nombre visible.'
+                : 'Fijo: cambiarlo rompería chats en curso.';
         const campoMensaje = document.getElementById('estado-mensaje');
         campoMensaje.value = estado.message ?? '';
         campoMensaje.placeholder = ejemploMensaje(nombre, tipo);
         document.getElementById('mensaje-ayuda').textContent = /_pedir_corte$|^seleccionar_departamento$/.test(nombre)
-            ? 'El sistema reemplaza {{departamentos}} por la lista de opciones: no lo borres.'
-            : 'Selecciona texto y pulsa un botón para darle formato.';
+            ? 'No borres {{departamentos}}: ahí va la lista.'
+            : 'Selecciona texto y elige un formato.';
         document.getElementById('tipo-' + tipo).checked = true;
         // Para los avisos del modal: cómo era al abrirlo (menú con N opciones conectadas) y sin destino elegido aún.
         tipoOriginal = tipo;
@@ -877,28 +875,25 @@ if (contenedor) {
         const mensaje = campoMensaje.value;
         const siguiente = siguienteElegido ?? modelo.flujo[editando]?.next_state ?? null;
 
-        if (!mensaje.trim()) avisos.push('El mensaje está vacío: el bot enviaría un mensaje vacío.');
+        if (!mensaje.trim()) avisos.push('El mensaje está vacío.');
 
         // H18: cambiar un menú a otro tipo quita sus opciones (y sus conexiones) al aplicar.
         if (tipoOriginal === 'menu' && tipo !== 'menu') {
             const n = filasOpciones.querySelectorAll('tr').length;
             const c = conectadasOriginal;
-            avisos.push(`Al aplicar se quitará${n === 1 ? ' la opción' : `n las ${n} opciones`} de este menú`
-                + (c ? ` y ${c === 1 ? 'su conexión (ese paso quedará suelto)' : `sus ${c} conexiones (esos pasos quedarán sueltos)`}` : '')
-                + '. Si vuelves a «Mostrar un menú» antes de aplicar, se conserva' + (n === 1 ? '.' : 'n.'));
+            avisos.push(`Al aplicar se quita${n === 1 ? ' la opción' : `n las ${n} opciones`}${c ? ` y ${c === 1 ? 'su conexión' : `sus ${c} conexiones`}` : ''} de este menú.`);
         }
 
         // H13: sin salida, el bot no responde nunca más (salvo la Despedida, el cierre de encuesta y la espera de asesor).
         const sinSalidaPermitida = editando === 'end' || editando === 'encuesta_fin' || editando.startsWith('esperando_agente');
         if (tipo === 'final' && !sinSalidaPermitida) {
-            avisos.push('Después de este mensaje el bot ya no responderá a nada. Para cerrar bien la conversación, '
+            avisos.push('Aquí el bot deja de responder. '
                 + '<button type="button" class="btn btn-sm btn-warning py-0" data-cerrar-despedida>Cerrar con la Despedida</button>');
         }
 
         // H1: un paso no espera respuesta (se envía junto con el siguiente).
         if (tipo === 'paso' && pareceQuePideDatos(mensaje) && siguiente !== 'mas_informacion' && !String(siguiente ?? '').endsWith('_pedir_corte')) {
-            avisos.push('Este mensaje pide que la persona escriba algo, pero en un paso el bot no espera la respuesta: '
-                + 'lo envía junto con el siguiente. Si quieres que elija, usa «Mostrar un menú» con opciones.');
+            avisos.push('Pides que escriba algo, pero aquí el bot no espera respuesta: mejor usa un menú.');
         }
 
         // H12: palabras que el bot usa como comando (si llevan a otro sitio que la opción).
@@ -909,8 +904,7 @@ if (contenedor) {
                 for (const palabra of new Set([normalizarTexto(clave.value), normalizarTexto(texto.value)])) {
                     const va = COMANDOS_DEL_MOTOR[palabra];
                     if (va && destino !== va) {
-                        avisos.push(`«${escapar(palabra)}» es un comando del bot (${va === 'start' ? 'vuelve al inicio' : 'termina el chat'}): `
-                            + 'quien lo escriba no llegará a esta opción. Usa un número u otro texto.');
+                        avisos.push(`«${escapar(palabra)}» es un comando del bot: esta opción nunca se elegirá.`);
                     }
                 }
             }
@@ -928,7 +922,7 @@ if (contenedor) {
         siguienteElegido = 'end';
         document.getElementById('tipo-paso').checked = true;
         mostrarSeccion('paso');
-        document.getElementById('seccion-paso').textContent = 'Al aplicar, este mensaje quedará conectado a la Despedida: el bot los envía juntos y la conversación se cierra bien.';
+        document.getElementById('seccion-paso').textContent = 'Al aplicar, quedará conectado a la Despedida.';
         actualizarVista();
     });
 
@@ -1097,7 +1091,7 @@ if (contenedor) {
     function pintarDocumento() {
         if (!('start' in modelo.flujo)) {
             barraDocumento.replaceChildren();
-            contenidoDocumento.innerHTML = '<p class="text-body-secondary">El flujo no tiene start (el inicio).</p>';
+            contenidoDocumento.innerHTML = '<p class="text-body-secondary">Falta la Bienvenida (start).</p>';
             return;
         }
         const tituloDe = titulosDelFlujo(modelo.flujo, modelo.titulos);
@@ -1113,7 +1107,7 @@ if (contenedor) {
                 ? `<details class="nav-avisos"><summary>&#9888; ${avisos.length}</summary><ul>`
                     + avisos.map((a) => `<li class="${a.gravedad === 'error' ? 'text-danger' : ''}"><a href="#" data-doc-ver="${escapar(a.nombre)}">${escapar(a.texto)}</a></li>`).join('')
                     + '</ul></details>'
-                : '<span class="nav-avisos text-success" title="Sin destinos rotos ni pasos sueltos">&#10003;</span>');
+                : '<span class="nav-avisos text-success" title="Todo conectado">&#10003;</span>');
 
         // Una tarjeta por paso abierto; la de cada opción abierta va dentro de su fila (desplegable).
         const tarjeta = (nombre, nivel, entra = false) => {
@@ -1135,16 +1129,15 @@ if (contenedor) {
                     ? `<em>${ficha.combinadoCon === o.destino ? 'se envía junto con' : 'sigue'}</em>`
                     : `<span class="nav-clave">${escapar(o.clave)}</span> ${escapar(o.texto || '(sin texto)')}`;
                 let detalle;
-                if (o.modo === 'pendiente') detalle = '<span class="text-warning-emphasis">sin conectar · clic para crear el siguiente paso</span>';
-                else if (o.modo === 'roto') detalle = `<span class="text-danger">&#9888; «${escapar(o.destino)}» no existe · clic para conectarla</span>`;
+                if (o.modo === 'pendiente') detalle = '<span class="text-warning-emphasis">sin conectar · clic para crear</span>';
+                else if (o.modo === 'roto') detalle = `<span class="text-danger">&#9888; «${escapar(o.destino)}» no existe · clic para conectar</span>`;
                 else if (o.modo === 'vuelve') detalle = `vuelve a ${escapar(o.tituloDestino)}`;
                 else if (o.tituloDestino === o.texto) detalle = escapar(o.resumenDestino); // el título es el texto de la opción: no repetirlo
                 else detalle = `${escapar(o.tituloDestino)} · ${escapar(o.resumenDestino)}`;
                 // Señales para quien no conoce el panel: viñeta (› que gira al abrir) y la acción escrita a la derecha.
                 const vineta = { abrir: '&rsaquo;', vuelve: '&#8617;', roto: '!', pendiente: '+' }[o.modo];
                 const accion = { abrir: abierta ? 'Ocultar' : 'Ver', vuelve: 'Ir &#8617;', roto: 'Conectar', pendiente: '+ Crear' }[o.modo];
-                const ayuda = { abrir: abierta ? 'Clic para ocultar este paso' : 'Clic para ver este paso', vuelve: 'Clic para subir a ese paso',
-                    roto: 'Clic para conectarla con un paso', pendiente: 'Clic para crear el siguiente paso' }[o.modo];
+                const ayuda = { abrir: abierta ? 'Ocultar' : 'Ver este paso', vuelve: 'Subir a ese paso', roto: 'Conectar', pendiente: 'Crear el siguiente paso' }[o.modo];
                 const datos = `data-nav-nivel-opcion="${nivel}" data-nav-indice="${o.indice}" data-nav-modo="${o.modo}" data-nav-destino="${escapar(o.destino ?? '')}"`;
                 const entra = abierta && recienAbierta?.nivel === nivel && recienAbierta?.indice === o.indice;
 
@@ -1156,7 +1149,7 @@ if (contenedor) {
                     + `<span class="nav-accion">${accion}</span></button>`
                     // ⋯ = el menú de la bolita (crear el siguiente paso, conectar con otro, quitar la conexión)
                     + `<button type="button" class="nav-mas" ${datos.replace('data-nav-nivel-opcion', 'data-nav-menu data-nav-nivel-opcion')} `
-                    + 'title="Más: crear el siguiente paso, conectar con otro o quitar la conexión">&#8943;</button></div>'
+                    + 'title="Más opciones">&#8943;</button></div>'
                     + (abierta ? tarjeta(o.destino, nivel + 1, entra) : '')
                     + '</li>';
             }
@@ -1266,9 +1259,9 @@ if (contenedor) {
     document.getElementById('documento-copiar').addEventListener('click', async () => {
         try {
             await navigator.clipboard.writeText(markdown());
-            avisar('Documento copiado (Markdown).', 'success');
+            avisar('Copiado.', 'success');
         } catch {
-            avisar('No se pudo copiar: el navegador no dio permiso. Usa «Descargar».');
+            avisar('No se pudo copiar: usa «Descargar».');
         }
     });
     document.getElementById('documento-descargar').addEventListener('click', () => {

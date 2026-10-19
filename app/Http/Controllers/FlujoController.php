@@ -45,7 +45,7 @@ class FlujoController extends Controller
         $datos = $request->validate([
             'nombre' => ['required', 'string', 'max:100', Rule::unique('flujos', 'nombre')],
         ], [
-            'nombre.unique' => 'Ya existe un flujo con ese nombre. Usa otro (por ejemplo, añade la fecha o el área).',
+            'nombre.unique' => 'Ya existe un flujo con ese nombre.',
         ]);
 
         $flujo = DB::transaction(function () use ($datos) {
@@ -180,8 +180,8 @@ class FlujoController extends Controller
             'archivo' => ['required', 'file', 'max:2048'],
             'nombre' => ['nullable', 'string', 'max:100'],
         ], [
-            'archivo.required' => 'Elige el archivo .json del flujo.',
-            'archivo.max' => 'El archivo pesa más de 2 MB: no parece un flujo.',
+            'archivo.required' => 'Elige un archivo .json.',
+            'archivo.max' => 'El archivo pesa más de 2 MB.',
         ]);
 
         $archivo = $request->file('archivo');
@@ -189,14 +189,14 @@ class FlujoController extends Controller
         $json = json_decode($texto);
 
         $error = match (true) {
-            json_last_error() !== JSON_ERROR_NONE => 'El archivo no es un JSON válido (' . json_last_error_msg() . ').',
-            ! is_object($json) || ! isset($json->FLUJO) || ! is_object($json->FLUJO) => 'El archivo no tiene la clave «FLUJO» con los pasos del bot.',
-            count((array) $json->FLUJO) === 0 => 'El archivo tiene «FLUJO», pero sin ningún paso.',
+            json_last_error() !== JSON_ERROR_NONE => 'No es un JSON válido.',
+            ! is_object($json) || ! isset($json->FLUJO) || ! is_object($json->FLUJO) => 'Falta la clave «FLUJO».',
+            count((array) $json->FLUJO) === 0 => 'El flujo no tiene pasos.',
             default => null,
         };
         foreach ($error ? [] : (array) $json->FLUJO as $paso => $estado) {
             if (! is_object($estado)) {
-                $error = "El paso «{$paso}» no tiene el formato esperado (debe ser un objeto con message).";
+                $error = "El paso «{$paso}» no tiene el formato correcto.";
                 break;
             }
         }
@@ -207,10 +207,10 @@ class FlujoController extends Controller
         // Nombre: el escrito o, si no, el del archivo sin la extensión. Único (QA H17).
         $nombre = trim((string) ($request->input('nombre') ?: pathinfo($archivo->getClientOriginalName(), PATHINFO_FILENAME)));
         if ($nombre === '' || mb_strlen($nombre) > 100) {
-            throw ValidationException::withMessages(['nombre' => 'Escribe un nombre para el flujo (hasta 100 caracteres).']);
+            throw ValidationException::withMessages(['nombre' => 'Escribe un nombre (máx. 100 caracteres).']);
         }
         if (Flujo::where('nombre', $nombre)->exists()) {
-            throw ValidationException::withMessages(['nombre' => "Ya existe un flujo llamado «{$nombre}». Escribe otro nombre."]);
+            throw ValidationException::withMessages(['nombre' => "Ya existe «{$nombre}». Usa otro nombre."]);
         }
 
         // Datos del editor: las posiciones van a su columna; «nuevos» no se importa (los pasos quedan fijos).
@@ -233,7 +233,7 @@ class FlujoController extends Controller
         $pasos = count((array) $json->FLUJO);
 
         return redirect()->route('flujos.index')
-            ->with('estado', "Flujo «{$nombre}» importado ({$pasos} pasos). Ábrelo con «Editar».");
+            ->with('estado', "«{$nombre}» importado ({$pasos} pasos).");
     }
 
     private function slugUnico(string $nombre): string

@@ -44,15 +44,15 @@ const ETIQUETAS_AVANZADOS = {
 
 /** Para qué sirve cada uno, en palabras sencillas (verificado en WhatsAppController.php o docs/PLAN.md §4). */
 export const DESCRIPCIONES = {
-    start: 'El primer mensaje que recibe la persona cuando escribe al bot.',
-    end: 'El mensaje con el que el bot se despide y termina la conversación.',
-    esperando_agente: 'El bot deja de responder y una persona de tu equipo continúa la conversación.',
-    end_or_menu: 'Pregunta si la persona necesita algo más (volver al menú o terminar).',
-    mas_informacion: 'Antes de pasar con un asesor, el bot pide los datos de la persona.',
-    seleccionar_departamento: 'El bot muestra una lista que arma el sistema (por ejemplo, sedes o áreas) para que la persona elija una opción.',
-    encuesta_inicio: 'Pregunta si la persona quedó satisfecha con la atención.',
-    encuesta_fin: 'Agradece la respuesta de la encuesta antes de terminar.',
-    verificacion_numero: 'Se usa cuando el número de la persona no tiene una atención anterior.',
+    start: 'Lo primero que recibe el cliente.',
+    end: 'El bot se despide y termina el chat.',
+    esperando_agente: 'Una persona de tu equipo sigue el chat.',
+    end_or_menu: 'Pregunta si necesita algo más.',
+    mas_informacion: 'Pide los datos antes de pasar con un asesor.',
+    seleccionar_departamento: 'Muestra una lista del sistema (sedes, áreas…).',
+    encuesta_inicio: 'Pregunta si quedó satisfecho.',
+    encuesta_fin: 'Agradece la respuesta de la encuesta.',
+    verificacion_numero: 'Para números sin atención anterior.',
 };
 
 /**
@@ -61,13 +61,13 @@ export const DESCRIPCIONES = {
  */
 export const PATRONES_SISTEMA = [
     { antes: 'derivar_', despues: '', ejemplo: 'notificaciones', etiqueta: 'Derivar a un área', icono: '↪️',
-      descripcion: 'Avisa que la persona será atendida por un área concreta (ej. notificaciones).' },
+      descripcion: 'Avisa que lo atenderá un área.' },
     { antes: '', despues: '_pedir_corte', ejemplo: 'deposito', etiqueta: 'Pedir que elija de la lista', icono: '📋',
-      descripcion: 'Pide a la persona que elija una opción de la lista que arma el sistema; el bot valida la respuesta y la guarda.' },
+      descripcion: 'Pide elegir de la lista del sistema.' },
     { antes: '', despues: '_confirmar', ejemplo: 'deposito', etiqueta: 'Confirmar la elección', icono: '✅',
-      descripcion: 'Pregunta si lo que eligió la persona es correcto (Sí / No).' },
+      descripcion: 'Pregunta si lo elegido es correcto.' },
     { antes: 'esperando_agente_', despues: '', ejemplo: 'quejas', etiqueta: 'Esperar asesor de un área', icono: '⏳',
-      descripcion: 'La persona espera a un asesor de un área concreta.' },
+      descripcion: 'Espera a un asesor de un área.' },
 ];
 
 // esperando_agente*, derivar_* (incluye el typo derivar_expedientes_cofirmar), *_pedir_corte, *_confirmar.

@@ -114,17 +114,16 @@ export function revisarFlujo(flujo, titulo = (n) => n) {
         const tieneOpciones = 'options' in estado;
 
         // H3: el motor enviaría un mensaje vacío.
-        if (!mensaje.trim()) agregar('error', nombre, 'no tiene mensaje: el bot enviaría un mensaje vacío.');
+        if (!mensaje.trim()) agregar('error', nombre, 'no tiene mensaje.');
 
         // H15: límite de WhatsApp.
         if (mensaje.length > MAXIMO_CARACTERES) {
-            agregar('error', nombre, `el mensaje tiene ${mensaje.length} caracteres; WhatsApp admite hasta ${MAXIMO_CARACTERES}.`);
+            agregar('error', nombre, `tiene ${mensaje.length} caracteres (máximo ${MAXIMO_CARACTERES}).`);
         }
 
         // H13: sin opciones ni siguiente, el motor descarta todo lo que escriba la persona (l.~6240).
         if (!tieneOpciones && estado.next_state == null && !SIN_SALIDA_PERMITIDA(nombre)) {
-            agregar('error', nombre, 'después de este mensaje el bot ya no responde. Conéctalo a la Despedida o a otro paso '
-                + '(en el editor: «Continuar a otro estado»).', 'mudo');
+            agregar('error', nombre, 'aquí el bot deja de responder: conéctalo a la Despedida.', 'mudo');
         }
 
         // H1: un paso se envía junto con el siguiente; si pide que la persona escriba algo y el siguiente no espera
@@ -135,21 +134,20 @@ export function revisarFlujo(flujo, titulo = (n) => n) {
             const pregunta = /\?\s*$/.test(mensaje.trim());
             if (pareceQuePideDatos(mensaje) || (pregunta && !esMenu)) {
                 agregar('aviso', nombre, esMenu
-                    ? `pide que la persona escriba algo, pero se envía junto con el menú «${titulo(unidoCon)}»: lo que escriba se tomará como una opción. Si necesitas que elija, ofrece opciones.`
-                    : `pide que la persona escriba algo, pero se envía junto con «${titulo(unidoCon)}» y la conversación termina: la respuesta se pierde. Ofrece opciones (un menú) en su lugar.`);
+                    ? `pide que escriban algo, pero llega junto al menú «${titulo(unidoCon)}»: mejor usa opciones.`
+                    : 'pide que escriban algo, pero el chat termina enseguida: mejor usa opciones.');
             }
         }
 
         for (const { clave, texto, destino } of salidas(estado)) {
             if (clave === null) continue;
             // H10: la persona vería solo «1.».
-            if (!String(texto ?? '').trim()) agregar('aviso', nombre, `la opción ${clave} no tiene texto: la persona vería solo «${clave}.».`);
+            if (!String(texto ?? '').trim()) agregar('aviso', nombre, `la opción ${clave} no tiene texto.`);
             // H12: el motor atiende antes el comando (salvo que la opción lleve al mismo sitio).
             for (const palabra of new Set([normalizar(clave), normalizar(texto)])) {
                 const va = COMANDOS_DEL_MOTOR[palabra];
                 if (va && destino !== va) {
-                    agregar('aviso', nombre, `la opción «${palabra}» es un comando del bot (${va === 'start' ? 'vuelve al inicio' : 'termina el chat'}): `
-                        + 'al escribirla, la persona no llega a esta opción. Usa un número o un texto distinto.');
+                    agregar('aviso', nombre, `«${palabra}» es un comando del bot (${va === 'start' ? 'vuelve al inicio' : 'termina el chat'}): esa opción nunca se elegirá.`);
                 }
             }
         }
@@ -169,20 +167,20 @@ export function revisarFlujo(flujo, titulo = (n) => n) {
         for (const grupo of origenes) {
             const afectados = pasosQueLlegan(grupo, trampas, flujo).size;
             const primero = [...grupo].sort((a, b) => orden.get(a) - orden.get(b))[0];
-            const yAdemas = afectados === 1 ? 'el paso que lleva aquí' : `los ${afectados} pasos que llevan aquí`;
+            const yAdemas = afectados === 1 ? 'afecta a 1 paso más' : `afecta a ${afectados} pasos más`;
             const mudo = grupo.size === 1 && problemas.find((p) => p.codigo === 'mudo' && p.nombre === primero);
             if (mudo) {
-                if (afectados) mudo.texto += ` Por eso tampoco pueden terminar ${yAdemas}.`;
+                if (afectados) mudo.texto += ` (${yAdemas})`;
                 continue;
             }
             const consejo = primero === 'end_or_menu'
                 ? 'conecta sus opciones al inicio o a la Despedida.'
-                : 'conecta alguna opción a «¿Algo más?», a la Despedida o a un paso que termine.';
-            agregar('error', primero, `desde aquí no hay forma de terminar la conversación${afectados ? `, y por eso tampoco desde ${yAdemas}` : ''}: ${consejo}`, 'sin-cierre');
+                : 'conéctalo a «¿Algo más?» o a la Despedida.';
+            agregar('error', primero, `desde aquí no se puede terminar${afectados ? ` (${yAdemas})` : ''}: ${consejo}`, 'sin-cierre');
         }
         // Resumen: si ni desde la Bienvenida se puede terminar, se dice (además de los orígenes de arriba).
         if (trampas.has('start') && !problemas.some((p) => p.codigo === 'sin-cierre' && p.nombre === 'start')) {
-            agregar('error', 'start', 'desde el inicio no hay ningún camino que termine la conversación: corrige los avisos de abajo.', 'sin-cierre');
+            agregar('error', 'start', 'ningún camino termina el chat: revisa los avisos de abajo.', 'sin-cierre');
         }
     }
     return problemas;
@@ -195,11 +193,10 @@ export function revisarFlujo(flujo, titulo = (n) => n) {
  */
 export function estadoDelDiseno(avisos) {
     const errores = avisos.filter((a) => a.gravedad === 'error').length;
-    if (!avisos.length) return { nivel: 'ok', icono: '✅', texto: 'Bien cerrado', detalle: 'Todos los caminos terminan bien y no hay nada por revisar.' };
+    if (!avisos.length) return { nivel: 'ok', icono: '✅', texto: 'Bien cerrado', detalle: 'Todo bien: cada camino termina.' };
     if (errores) {
         return { nivel: 'falla', icono: '⛔', texto: errores === 1 ? '1 falla' : `${errores} fallas`,
-            detalle: `${errores === 1 ? 'Hay algo que hace' : `Hay ${errores} cosas que hacen`} fallar la conversación`
-                + `${avisos.length > errores ? ` y ${avisos.length - errores} más por revisar` : ''}.` };
+            detalle: `${errores === 1 ? '1 cosa hace' : `${errores} cosas hacen`} fallar el chat${avisos.length > errores ? ` y ${avisos.length - errores} más por revisar` : ''}.` };
     }
-    return { nivel: 'revisar', icono: '⚠️', texto: `${avisos.length} por revisar`, detalle: 'La conversación funciona, pero hay detalles por revisar.' };
+    return { nivel: 'revisar', icono: '⚠️', texto: `${avisos.length} por revisar`, detalle: 'Funciona, pero hay detalles por revisar.' };
 }

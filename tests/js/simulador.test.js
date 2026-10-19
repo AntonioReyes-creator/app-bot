@@ -123,9 +123,9 @@ test('opción sin conectar o a un paso borrado (QA H7/H14): lo dice y se queda e
 
     let r = responder(f, 'start', '1');
     assert.equal(r.estado, 'start');
-    assert.match(r.mensajes[0].texto, /todavía no lleva a ningún paso/);
+    assert.match(r.mensajes[0].texto, /aún no lleva a ningún paso/);
     r = responder(f, 'start', '2');
     assert.equal(r.estado, 'start');
-    assert.match(r.mensajes[0].nota, /«borrado» fue borrado/);
+    assert.match(r.mensajes[0].nota, /«borrado» ya no existe/);
     assert.equal(responder(f, 'start', '3').estado, 'c', 'y se puede seguir probando');
 });

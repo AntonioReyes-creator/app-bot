@@ -27,7 +27,7 @@ test('copia de vista: cada caja que llega a un estado compartido CON opciones ti
     assert.equal(deA.pos_x, 1420, 'a la derecha de su origen');
     assert.deepEqual(Object.keys(deA.outputs), [], 'de una copia no salen líneas');
     assert.match(deA.html, /data-ir="start"[^>]*>1 &#8674; start/, 'sus opciones son etiquetas para ir');
-    assert.match(deA.html, /Copia de vista/);
+    assert.match(deA.html, /Copia de «algo_mas»/);
 
     const pasoA = Object.values(r.datos.drawflow.Home.data).find((n) => n.name === 'paso_a');
     assert.deepEqual(pasoA.outputs.output_1.connections, [{ node: String(deA.id), output: 'input_1' }], 'la línea va a la copia');

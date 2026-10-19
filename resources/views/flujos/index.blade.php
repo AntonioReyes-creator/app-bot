@@ -17,10 +17,7 @@
         <summary class="d-none">Importar</summary>
         <div class="card-body">
             <h2 class="h6">&#11014; Importar un flujo</h2>
-            <p class="small text-body-secondary mb-2">
-                Elige un archivo <code>.json</code> exportado de aquí o un flujo del bot (con la clave <code>FLUJO</code>).
-                Se crea un flujo nuevo en borrador; los demás no se tocan.
-            </p>
+            <p class="small text-body-secondary mb-2">Sube un <code>.json</code> (de aquí o del bot); se crea como flujo nuevo.</p>
             <form method="POST" action="{{ route('flujos.importar') }}" enctype="multipart/form-data" class="row g-2 align-items-start">
                 @csrf
                 <div class="col-md-5">
@@ -31,7 +28,7 @@
                 <div class="col-md-5">
                     <input type="text" name="nombre" value="{{ old('nombre') }}" maxlength="100"
                            class="form-control @error('nombre') is-invalid @enderror"
-                           placeholder="Nombre (si lo dejas vacío, el del archivo)" aria-label="Nombre del flujo">
+                           placeholder="Nombre (vacío = el del archivo)" aria-label="Nombre del flujo">
                     @error('nombre')<div class="invalid-feedback">{{ $message }}</div>@enderror
                 </div>
                 <div class="col-md-2">
@@ -54,7 +51,7 @@
                     <th>Nombre</th>
                     <th>Slug</th>
                     <th class="text-center">Versiones</th>
-                    <th title="¿Todos los caminos del bot terminan bien? Lo calcula la misma revisión que el editor.">Diseño</th>
+                    <th title="¿Todos los caminos del bot terminan bien?">Diseño</th>
                     <th>Creado</th>
                     <th></th>
                 </tr>
@@ -70,10 +67,10 @@
                         <td class="text-end text-nowrap">
                             <a href="{{ route('flujos.edit', $flujo) }}" class="btn btn-sm btn-outline-primary">Editar</a>
                             <a href="{{ route('flujos.exportar', $flujo) }}" class="btn btn-sm btn-outline-secondary"
-                               title="Descargar lo guardado como .json (sirve para el bot y para volver a importarlo)">Exportar</a>
+                               title="Descargar como .json">Exportar</a>
                             {{-- Borrar es definitivo (también sus versiones): se pide confirmación. --}}
                             <form method="POST" action="{{ route('flujos.destroy', $flujo) }}" class="d-inline"
-                                  onsubmit="return confirm(@js('¿Eliminar el flujo «' . $flujo->nombre . '» y todas sus versiones? No se puede deshacer.'))">
+                                  onsubmit="return confirm(@js('¿Eliminar «' . $flujo->nombre . '»? No se puede deshacer.'))">
                                 @csrf
                                 @method('DELETE')
                                 <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>

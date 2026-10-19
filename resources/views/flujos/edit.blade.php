@@ -20,7 +20,7 @@
             <button type="button" id="guardar" class="btn btn-primary" data-url="{{ route('flujos.guardar', $flujo) }}"
                     title="Guardar el borrador (Ctrl+S)">Guardar</button>
             <button type="button" id="exportar" class="btn btn-outline-secondary" data-url="{{ route('flujos.exportar', $flujo) }}"
-                    data-archivo="{{ $flujo->slug }}.json" title="Descargar el flujo como .json (guarda antes si hay cambios)">&#11015; Exportar</button>
+                    data-archivo="{{ $flujo->slug }}.json" title="Descargar como .json">&#11015; Exportar</button>
             <a href="{{ route('flujos.index') }}" class="btn btn-outline-secondary">Volver</a>
         </div>
     </div>
@@ -29,15 +29,15 @@
     {{-- Barra de herramientas. Los estados normales se crean desde las bolitas de cada caja. --}}
     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
         <button type="button" class="btn btn-sm btn-outline-secondary" id="abrir-sistema"
-                title="Bienvenida, despedida, pasar con un asesor… pasos que el bot ya sabe hacer">&#129513; Pasos especiales</button>
+                title="Pasos que el bot ya trae listos">&#129513; Pasos especiales</button>
         <button type="button" class="btn btn-sm btn-outline-dark" id="ordenar"
-                title="Recoloca las cajas como un árbol de izquierda a derecha y encuadra todo el flujo">&#8862; Ordenar</button>
+                title="Acomodar las cajas en forma de árbol">&#8862; Ordenar</button>
         <button type="button" class="btn btn-sm btn-outline-secondary" id="copias" aria-pressed="false"
-                title="Mostrar junto a cada caja una copia de los pasos compartidos (ej. «¿Algo más?»). Solo cambia el dibujo">&#10697; Copias</button>
+                title="Ver copias de los pasos compartidos junto a cada caja">&#10697; Copias</button>
         <button type="button" class="btn btn-sm btn-outline-secondary" id="documento-abrir"
-                title="Recorrer el flujo paso a paso: empieza en la bienvenida y despliega cada opción">&#128196; Documento</button>
+                title="Recorrer el flujo paso a paso">&#128196; Documento</button>
         <button type="button" class="btn btn-sm btn-outline-success" id="probar"
-                title="Conversa con el bot como lo haría una persona en WhatsApp">&#9654; Probar</button>
+                title="Chatear con el bot como si fueras un cliente">&#9654; Probar</button>
         <span id="aviso" class="badge text-bg-danger d-none" role="status"></span>
         <span class="text-body-secondary small ms-auto">
             <strong>Doble clic</strong>: editar · <strong>arrastra</strong> una bolita: conectar · <strong>clic derecho</strong> en ella: más · <kbd>Supr</kbd>: borrar · <kbd>Ctrl</kbd>+rueda: zoom
@@ -69,11 +69,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="mb-1">El bot ya sabe hacer estos pasos por sí solo.</p>
-                    <p class="small text-body-secondary">
-                        Añádelos a tu flujo y conéctalos desde una opción (arrastra desde su bolita), o elígelos con
-                        <strong>clic derecho</strong> en la bolita. Puedes cambiar su mensaje, pero no su código: el bot los reconoce por él.
-                    </p>
+                    <p class="small text-body-secondary">Vienen listos: añádelos y conéctalos desde una opción.</p>
 
                     <h3 class="h6">Los más usados</h3>
                     <table class="table table-sm align-middle">
@@ -82,9 +78,7 @@
 
                     <details class="mt-3" id="sistema-avanzado">
                         <summary class="h6 mb-2">Más pasos especiales (avanzado)</summary>
-                        <p class="small text-body-secondary">
-                            Tienen reglas propias del sistema actual (listas, encuestas, áreas). Úsalos solo si tu equipo técnico te lo indica.
-                        </p>
+                        <p class="small text-body-secondary">Úsalos solo si tu equipo técnico te lo pide.</p>
                         <table class="table table-sm align-middle">
                             <tbody id="sistema-avanzados"></tbody>
                         </table>
@@ -126,7 +120,7 @@
                     <div class="mb-3">
                         <label for="estado-titulo" class="form-label">Nombre visible</label>
                         <input type="text" id="estado-titulo" class="form-control" maxlength="80" autocomplete="off">
-                        <div class="form-text">Libre (con tildes y espacios). Es lo que ves en el editor; el bot no lo usa.</div>
+                        <div class="form-text">Cómo lo ves tú en el editor; el bot no lo usa.</div>
                     </div>
 
                     <div class="mb-3">
@@ -159,7 +153,7 @@
                         </div>
                         <textarea id="estado-mensaje" class="form-control" rows="6"></textarea>
                         <div class="d-flex justify-content-between form-text">
-                            <span id="mensaje-ayuda">Selecciona texto y pulsa un botón para darle formato.</span>
+                            <span id="mensaje-ayuda">Selecciona texto y elige un formato.</span>
                             <span id="mensaje-contador"></span>
                         </div>
                     </div>
@@ -174,25 +168,19 @@
                         <label class="btn btn-outline-primary" for="tipo-menu">Mostrar un menú</label>
                     </div>
 
-                    <div id="seccion-paso" class="form-text mb-3">
-                        El destino se elige en el lienzo: arrastra desde la bolita de «sigue» hasta otra caja (clic derecho en la bolita: más opciones).
-                        Si el siguiente estado no pide datos, el bot envía los dos mensajes juntos.
-                    </div>
+                    <div id="seccion-paso" class="form-text mb-3">Conecta el siguiente paso en el lienzo, desde la bolita «sigue».</div>
 
                     <div id="seccion-menu">
                         <table class="table table-sm align-middle mb-2">
                             <thead>
                                 <tr><th style="width: 7rem">Nº / clave</th><th>Texto de la opción</th>
-                                    <th style="width: 32%" title="Otras formas de pedir esta opción. Si la persona escribe un mensaje que contiene una de ellas, el bot elige esta opción.">Palabras clave <span class="text-body-secondary fw-normal small">(opcional)</span></th><th></th></tr>
+                                    <th style="width: 32%" title="Si el cliente escribe una de estas palabras, se elige esta opción">Palabras clave <span class="text-body-secondary fw-normal small">(opcional)</span></th><th></th></tr>
                             </thead>
                             <tbody id="filas-opciones"></tbody>
                         </table>
                         <div class="text-danger small mb-2 d-none" id="opciones-error"></div>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="agregar-opcion">+ Opción</button>
-                        <div class="form-text">
-                            Cada opción tiene su bolita en el lienzo: arrástrala hasta otra caja para conectarla, o clic derecho para crear el siguiente estado.
-                            Una clave que no es número (ej. <code>salir</code>) no siempre se lista en el menú, pero el usuario puede escribirla.
-                        </div>
+                        <div class="form-text">Conecta cada opción desde su bolita en el lienzo.</div>
                     </div>
 
                     {{-- Avisos que no impiden aplicar (QA): final que deja al bot mudo, paso que pide datos, comandos… --}}
@@ -208,9 +196,7 @@
                             <div class="vista-whatsapp-burbuja" id="vista-previa"></div>
                         </div>
                     </div>
-                    <div class="form-text mt-2">
-                        Las opciones con clave que no es número (ej. <code>salir</code>) no se listan en el menú.
-                    </div>
+                    <div class="form-text mt-2">Las opciones con letras (ej. <code>salir</code>) no salen en el menú.</div>
                   </div>
                   </div>
                 </div>
@@ -227,8 +213,8 @@
          aria-labelledby="documento-titulo">
         <div class="offcanvas-header border-bottom py-2">
             <h2 class="offcanvas-title fs-6 mb-0" id="documento-titulo">&#128196; Recorrer el flujo</h2>
-            <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="documento-copiar" title="Copiar el documento completo (Markdown)">Copiar</button>
-            <button type="button" class="btn btn-sm btn-outline-secondary ms-1 me-2" id="documento-descargar" title="Descargar el documento completo (.md)">Descargar</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="documento-copiar" title="Copiar todo el flujo como texto">Copiar</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary ms-1 me-2" id="documento-descargar" title="Descargar todo el flujo como texto (.md)">Descargar</button>
             <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Cerrar"></button>
         </div>
         <div class="nav-barra px-3 py-2 border-bottom" id="documento-barra"></div>
@@ -255,7 +241,7 @@
                        autocomplete="off" aria-label="Mensaje de la persona">
                 <button class="btn btn-success" type="submit">Enviar</button>
             </form>
-            <div class="form-text">Usa el flujo como está en el editor, aunque no lo hayas guardado.</div>
+            <div class="form-text">Prueba lo que ves en pantalla, aunque no esté guardado.</div>
         </div>
     </div>
 

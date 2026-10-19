@@ -201,7 +201,7 @@ test('no se puede renombrar un estado del sistema ni usar un nombre inválido o 
     const modelo = conMenu();
     const editar = (nombre, nuevo) => aplicarEdicion(modelo, nombre, { nombre: nuevo, message: 'x', tipo: 'final', opciones: [] });
 
-    assert.match(editar('end', 'fin').mensaje, /estado del sistema/);
+    assert.match(editar('end', 'fin').mensaje, /paso especial/);
     assert.match(editar('tramites', 'Mis Tramites').mensaje, /minúsculas/);
     assert.match(editar('tramites', 'start').mensaje, /Ya existe/);
 });
@@ -570,7 +570,7 @@ test('aplicarEdicion (QA H10, H15): opción sin texto y mensaje más largo que e
     const menu = (opciones, message = 'Hola') => ({ nombre: 'start', message, tipo: 'menu', opciones });
 
     assert.deepEqual(aplicarEdicion(modelo, 'start', menu([{ clave: '1', text: 'A' }, { clave: '2', text: '  ' }])),
-        { campo: 'texto', indice: 1, mensaje: 'Escribe el texto de la opción «2»: es lo que verá la persona.' });
+        { campo: 'texto', indice: 1, mensaje: 'Escribe el texto de la opción «2».' });
     assert.equal(aplicarEdicion(modelo, 'start', menu([{ clave: '1', text: 'A' }], 'x'.repeat(4097))).campo, 'mensaje');
     assert.equal(modelo.flujo.start.message, 'Hola', 'nada cambió');
     assert.equal(aplicarEdicion(modelo, 'start', menu([{ clave: '1', text: 'A' }], 'x'.repeat(4096))), null, '4096 justo sí');

@@ -15,7 +15,7 @@
             @error('nombre')
                 <div class="invalid-feedback">{{ $message }}</div>
             @enderror
-            <div class="form-text">Empezará con dos cajas: <code>start</code> → <code>end</code>.</div>
+            <div class="form-text">Arranca con una bienvenida y una despedida.</div>
         </div>
 
         <div class="d-flex gap-2">

@@ -113,40 +113,39 @@ export function explicar(flujo, nombre, referencia = (n) => n) {
     const conAreas = String(estado.message ?? '').includes('{{departamentos}}');
 
     if (nombre === 'start') {
-        lineas.push('Primer mensaje: el bot lo envía cuando la persona escribe por primera vez, con todas sus opciones.');
+        lineas.push('Es lo primero que recibe el cliente.');
     }
 
     if ('options' in estado) {
-        lineas.push('Espera que la persona elija una opción (por su número, su texto o una palabra clave); si no coincide, le repite las opciones.');
+        lineas.push('Espera que elija una opción.');
         const sinNumero = opciones.filter(([clave]) => !/^\d+$/.test(clave)).map(([clave]) => `«${clave}»`);
-        if (sinNumero.length) lineas.push(`La opción ${sinNumero.join(', ')} no lleva número: no siempre se muestra en el menú, pero la persona puede escribirla.`);
+        if (sinNumero.length) lineas.push(`${sinNumero.join(', ')} no sale en el menú, pero se puede escribir.`);
         if (opciones.some(([, o]) => o?.next_state === 'end')) {
-            lineas.push(`Las opciones que van a ${referencia('end')} cierran la conversación; normalmente el sistema hace antes su encuesta de salida.`);
+            lineas.push(`Ir a ${referencia('end')} termina el chat.`);
         }
     } else if (estado.next_state != null) {
         const siguiente = referencia(estado.next_state);
         const combinado = combinaCon(flujo, nombre);
         if (nombre === 'mas_informacion') {
-            lineas.push(`Pide los datos de la persona (nombre, documento, correo y su consulta); con ellos el sistema crea el ticket y pasa a ${siguiente}.`);
+            lineas.push(`Pide los datos del cliente y pasa a ${siguiente}.`);
         } else if (/_pedir_corte$/.test(nombre) || nombre === 'derivar_expedientes') {
-            lineas.push(`Muestra la lista de áreas y espera que la persona elija un número; luego pasa a ${siguiente} para confirmarlo.`);
+            lineas.push(`Muestra la lista de áreas y pasa a ${siguiente}.`);
         } else if (combinado) {
             const conOpciones = 'options' in (flujo[combinado] ?? {});
-            lineas.push(`Al llegar aquí eligiendo una opción, se envía en el mismo mensaje que ${referencia(combinado)}`
-                + (conOpciones ? ' y sus opciones: la persona responde ahí.' : '.'));
+            lineas.push(`Llega en el mismo mensaje que ${referencia(combinado)}${conOpciones ? ' (responde ahí)' : ''}.`);
         } else {
-            lineas.push(`Espera que la persona escriba algo (lo que sea) y continúa con ${siguiente}.`);
+            lineas.push(`Espera que escriba algo y sigue con ${siguiente}.`);
         }
     } else if (nombre === 'end' || nombre === 'encuesta_fin') {
-        lineas.push(`Cierra la conversación. Si la persona vuelve a escribir, empieza de nuevo en ${referencia('start')}.`);
+        lineas.push(`Termina el chat; si vuelve a escribir, empieza en ${referencia('start')}.`);
     } else if (/^esperando_agente/.test(nombre)) {
-        lineas.push('La conversación queda en manos de un asesor; mientras espera, el bot solo repite este aviso.');
+        lineas.push('Aquí atiende una persona del equipo.');
     } else {
-        lineas.push('Último mensaje de este camino: si la persona escribe, el bot no responde.');
+        lineas.push('Aquí el bot ya no responde.');
     }
 
     if (conAreas && !/_pedir_corte$/.test(nombre) && nombre !== 'derivar_expedientes') {
-        lineas.push('Incluye la lista de áreas ({{departamentos}}), que arma el sistema con las que tienen asesores.');
+        lineas.push('Incluye la lista de áreas del sistema.');
     }
     return lineas;
 }
@@ -171,8 +170,8 @@ export function resumirDocumento(secciones, flujo = null) {
         }
         if (s.sinConexion && s.nivel === 0) { // un aviso por rama suelta (lo que cuelga de ella tampoco se alcanza)
             const debajo = secciones.filter((x) => x.numero.startsWith(`${s.numero}.`)).length;
-            const extra = debajo === 1 ? ' (ni al paso que sigue)' : debajo > 1 ? ` (ni a los ${debajo} pasos que siguen)` : '';
-            avisos.push({ gravedad: 'aviso', nombre: s.nombre, texto: `${quien}: ningún camino desde el inicio llega aquí${extra}.` });
+            const extra = debajo === 1 ? ' (ni al siguiente)' : debajo > 1 ? ` (ni a los ${debajo} siguientes)` : '';
+            avisos.push({ gravedad: 'aviso', nombre: s.nombre, texto: `${quien}: nadie llega aquí${extra}.` });
         }
     }
     return {
@@ -279,9 +278,7 @@ export function documentoEnMarkdown(flujo, titulos = {}, nombreFlujo = 'Flujo') 
     const lineas = [
         `# ${nombreFlujo}`,
         '',
-        `${resumen.total} pasos: ${resumen.menus} menús, ${resumen.pasos} pasos, ${resumen.finales} finales `
-            + `(${resumen.especiales} especiales, ${resumen.compartidos} compartidos). `
-            + 'Cada paso se describe una vez; ⇢ remite a otra sección y ↩ vuelve atrás.',
+        `${resumen.total} pasos: ${resumen.menus} menús, ${resumen.pasos} pasos, ${resumen.finales} finales.`,
     ];
     if (resumen.avisos.length) {
         lineas.push('', `## Avisos (${resumen.avisos.length})`, '', ...resumen.avisos.map((a) => `- ${a.gravedad === 'error' ? '⚠' : '•'} ${a.texto}`));

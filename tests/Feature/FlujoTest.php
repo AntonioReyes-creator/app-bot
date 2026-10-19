@@ -199,7 +199,7 @@ class FlujoTest extends TestCase
         $this->get('/flujos')
             ->assertSee('action="' . route('flujos.destroy', 'poder-judicial') . '"', false)
             ->assertSee('name="_method" value="DELETE"', false)
-            ->assertSee('Eliminar el flujo', false);
+            ->assertSee('No se puede deshacer', false);
     }
 
     public function test_eliminar_flujo_inexistente_da_404(): void
@@ -239,7 +239,7 @@ class FlujoTest extends TestCase
 
         $this->from('/flujos/crear')->post('/flujos', ['nombre' => 'Tienda Lima'])
             ->assertRedirect('/flujos/crear')
-            ->assertSessionHasErrors(['nombre' => 'Ya existe un flujo con ese nombre. Usa otro (por ejemplo, añade la fecha o el área).']);
+            ->assertSessionHasErrors(['nombre' => 'Ya existe un flujo con ese nombre.']);
         $this->assertSame(1, Flujo::count());
     }
 
@@ -279,7 +279,7 @@ class FlujoTest extends TestCase
 
         $this->post('/flujos/importar', ['archivo' => UploadedFile::fake()->createWithContent('Mi bot.json', $archivo)])
             ->assertRedirect('/flujos')
-            ->assertSessionHas('estado', 'Flujo «Mi bot» importado (2 pasos). Ábrelo con «Editar».');
+            ->assertSessionHas('estado', '«Mi bot» importado (2 pasos).');
 
         $version = Flujo::where('nombre', 'Mi bot')->sole()->ultimaVersion;
         $this->assertSame('borrador', $version->estado);
@@ -292,10 +292,10 @@ class FlujoTest extends TestCase
     public function test_importar_rechaza_lo_que_no_es_un_flujo_y_no_crea_nada(): void
     {
         $casos = [
-            'no es JSON' => ['{"FLUJO": ', 'no es un JSON válido'],
-            'sin FLUJO' => ['{"pasos": {}}', 'no tiene la clave «FLUJO»'],
-            'FLUJO vacío' => ['{"FLUJO": {}}', 'sin ningún paso'],
-            'paso que no es objeto' => ['{"FLUJO": {"start": "hola"}}', 'El paso «start» no tiene el formato esperado'],
+            'no es JSON' => ['{"FLUJO": ', 'No es un JSON válido'],
+            'sin FLUJO' => ['{"pasos": {}}', 'Falta la clave «FLUJO»'],
+            'FLUJO vacío' => ['{"FLUJO": {}}', 'no tiene pasos'],
+            'paso que no es objeto' => ['{"FLUJO": {"start": "hola"}}', 'El paso «start» no tiene el formato correcto'],
         ];
         foreach ($casos as $caso => [$contenido, $mensaje]) {
             $errores = $this->post('/flujos/importar', ['archivo' => UploadedFile::fake()->createWithContent('x.json', $contenido)],

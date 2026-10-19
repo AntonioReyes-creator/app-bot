@@ -57,11 +57,11 @@ test('documento: texto de cada salida', () => {
 test('documento en Markdown: resumen, avisos, títulos legibles, mensajes citados y explicación', () => {
     const md = documentoEnMarkdown(flujo, {}, 'Mi bot');
 
-    assert.match(md, /^# Mi bot\n\n7 pasos: 3 menús, 3 pasos, 1 finales \(3 especiales, 3 compartidos\)\./);
-    assert.match(md, /## Avisos \(3\)\n\n- ⚠ §1\.1 A: la opción 3 va a «no_existe», que no existe\.\n- ⚠ §1\.3 ❓ ¿Algo más\?: la opción 3 no está conectada\.\n- • §2 Nadie llega: ningún camino desde el inicio llega aquí\./);
-    assert.match(md, /\n- \*\*§1 👋 Bienvenida \(start\)\*\* · Menú · lo usan 2 pasos\n  > Hola\n  \*ℹ Primer mensaje/);
+    assert.match(md, /^# Mi bot\n\n7 pasos: 3 menús, 3 pasos, 1 finales\./);
+    assert.match(md, /## Avisos \(3\)\n\n- ⚠ §1\.1 A: la opción 3 va a «no_existe», que no existe\.\n- ⚠ §1\.3 ❓ ¿Algo más\?: la opción 3 no está conectada\.\n- • §2 Nadie llega: nadie llega aquí\./);
+    assert.match(md, /\n- \*\*§1 👋 Bienvenida \(start\)\*\* · Menú · lo usan 2 pasos\n  > Hola\n  \*ℹ Es lo primero/);
     assert.match(md, /\n  - 1\. A → §1\.1 A \(tema_a\)\n/);
-    assert.match(md, /- \*\*§1\.1\.1 Info \(paso_a\)\*\* · Paso\n      > Info A\n      \*ℹ Al llegar aquí eligiendo una opción, se envía en el mismo mensaje que §1\.3 ❓ ¿Algo más\? y sus opciones/);
+    assert.match(md, /- \*\*§1\.1\.1 Info \(paso_a\)\*\* · Paso\n      > Info A\n      \*ℹ Llega en el mismo mensaje que §1\.3 ❓ ¿Algo más\? \(responde ahí\)/);
     assert.match(md, /## Sin conexión desde el inicio\n\n- \*\*§2 Nadie llega \(suelto\)\*\*/);
     assert.match(md, /mismo mensaje que §1\.3\.1 🏁 Despedida\.\*/, 'sin opciones: no dice "la persona responde ahí"');
 });
@@ -102,14 +102,14 @@ test('explicar: lo que hace el bot en cada tipo de paso (reglas del motor)', () 
     };
     const e = (n) => explicar(f, n).join(' ');
 
-    assert.match(e('start'), /^Primer mensaje.*Espera que la persona elija una opción.*«salir» no lleva número.*cierran la conversación/);
-    assert.match(e('info'), /se envía en el mismo mensaje que end_or_menu y sus opciones/);
-    assert.match(e('pide'), /Espera que la persona escriba algo \(lo que sea\) y continúa con x_pedir_corte/, 'el siguiente pide datos: no se combina');
+    assert.match(e('start'), /^Es lo primero.*Espera que elija una opción.*«salir» no sale en el menú.*termina el chat/);
+    assert.match(e('info'), /Llega en el mismo mensaje que end_or_menu \(responde ahí\)/);
+    assert.match(e('pide'), /Espera que escriba algo y sigue con x_pedir_corte/, 'el siguiente pide datos: no se combina');
     assert.match(e('x_pedir_corte'), /Muestra la lista de áreas.*x_confirmar/);
-    assert.match(e('mas_informacion'), /Pide los datos.*crea el ticket.*esperando_agente/);
-    assert.match(e('esperando_agente'), /en manos de un asesor/);
-    assert.match(e('end'), /Cierra la conversación.*empieza de nuevo en start/);
-    assert.match(e('nada'), /si la persona escribe, el bot no responde/);
+    assert.match(e('mas_informacion'), /Pide los datos.*esperando_agente/);
+    assert.match(e('esperando_agente'), /atiende una persona/);
+    assert.match(e('end'), /Termina el chat.*empieza en start/);
+    assert.match(e('nada'), /el bot ya no responde/);
 });
 
 test('resumen: cuenta pasos por tipo y lista avisos (rotos, sin conectar, sin conexión)', () => {
