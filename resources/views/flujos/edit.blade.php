@@ -4,8 +4,8 @@
 
 @section('contenido')
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-        <div class="d-flex align-items-center gap-2">
-            {{-- Volver: flecha junto al título, lejos de Guardar. --}}
+        <div class="d-flex align-items-start gap-2">
+            {{-- Volver: flecha a la altura del título (no del bloque título + slug), lejos de Guardar. --}}
             <a href="{{ route('flujos.index') }}" class="btn btn-outline-secondary btn-volver"
                title="Volver a mis flujos" aria-label="Volver a mis flujos">&larr;</a>
             <div>
