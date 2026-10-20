@@ -93,3 +93,28 @@ test('estados del sistema según docs/PLAN.md §4', () => {
         assert.ok(!esEstadoSistema(nombre), nombre);
     }
 });
+
+// --- Vista comprimida.
+test('plegada: la caja lleva la clase, la viñeta y el resumen de lo que no se ve', () => {
+    const flujo = {
+        start: { message: 'Hola', options: { 1: { text: 'A', next_state: 'a' }, 2: { text: 'B', next_state: null } } },
+        a: { message: 'A', options: { 1: { text: 'Volver', next_state: 'start' } } },
+    };
+    const { datos } = flujoADrawflow(flujo, {}, {}, new Set(), { plegada: (n) => n === 'a' });
+    const [start, a] = Object.values(datos.drawflow.Home.data);
+    assert.ok(a.class.includes('plegada'));
+    assert.ok(!start.class.includes('plegada'));
+    assert.match(a.html, /data-plegar aria-expanded="false"/);
+    assert.match(start.html, /data-plegar aria-expanded="true"/);
+    assert.match(a.html, /caja-resumen[^>]*>&#8617;1</); // su «Volver» es una etiqueta ↩ que no se ve
+    assert.equal(Object.keys(a.outputs).length, 1); // las salidas siguen existiendo (las líneas no se pierden)
+});
+
+test('plegada: en la vista normal no hay viñeta ni resumen', () => {
+    const flujo = { start: { message: 'Hola', next_state: 'end' }, end: { message: 'Chau' } };
+    const { datos } = flujoADrawflow(flujo);
+    for (const nodo of Object.values(datos.drawflow.Home.data)) {
+        assert.ok(!nodo.html.includes('data-plegar'));
+        assert.ok(!nodo.class.includes('plegada'));
+    }
+});

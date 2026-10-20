@@ -40,3 +40,32 @@ export function conexionesQueCruzan(conexiones, cajas) {
         .filter(({ origen, destino, p1, p2 }) => cruzaCajas(p1, p2, cajas, [origen, destino]))
         .map(({ clave }) => clave));
 }
+
+/**
+ * Baja lo justo las cajas que se pisarían (p. ej. al desplegar una en la vista comprimida o al extender): de arriba
+ * abajo, si una caja se cruza con otra ya colocada, pasa a quedar `separacion` px debajo de ella (en cadena: la que
+ * baja puede empujar a las siguientes). Solo hacia abajo; las que no se pisan no se mueven. No se guarda: es la vista.
+ * cajas: { nombre: { x, y, ancho, alto } } → { nombre: { x, y } }
+ */
+export function separarCajas(cajas, separacion = 30) {
+    const orden = Object.keys(cajas).sort((a, b) => cajas[a].y - cajas[b].y || cajas[a].x - cajas[b].x);
+    const puestas = [];
+    const resultado = {};
+    for (const nombre of orden) {
+        const { x, ancho, alto } = cajas[nombre];
+        let y = cajas[nombre].y;
+        let pisa = true;
+        while (pisa) {
+            pisa = false;
+            for (const p of puestas) {
+                if (x < p.x + p.ancho && x + ancho > p.x && y < p.y + p.alto && y + alto > p.y) {
+                    y = p.y + p.alto + separacion;
+                    pisa = true;
+                }
+            }
+        }
+        puestas.push({ x, y, ancho, alto });
+        resultado[nombre] = { x, y };
+    }
+    return resultado;
+}

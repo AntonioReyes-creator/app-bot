@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { conexionesQueCruzan, cruzaCajas, puntosCurva } from '../../resources/js/flujo/geometria.js';
+import { conexionesQueCruzan, cruzaCajas, puntosCurva, separarCajas } from '../../resources/js/flujo/geometria.js';
 
 // Tres cajas en fila: a (izquierda), b (en medio), c (derecha). Cada una 280 × 100.
 const cajas = {
@@ -39,4 +39,28 @@ test('conexionesQueCruzan devuelve solo las claves que cruzan otras cajas', () =
         { clave: 'a#1', origen: 'a', destino: 'c', p1: salidaDe('a'), p2: entradaDe('c') },
     ];
     assert.deepEqual([...conexionesQueCruzan(conexiones, cajas)], ['a#1']);
+});
+
+// --- separarCajas (vista: que ninguna caja pise a otra).
+
+test('separarCajas: si no se pisan, nadie se mueve', () => {
+    const cajas = { a: { x: 0, y: 0, ancho: 280, alto: 100 }, b: { x: 0, y: 130, ancho: 280, alto: 100 }, c: { x: 420, y: 0, ancho: 280, alto: 500 } };
+    assert.deepEqual(separarCajas(cajas), { a: { x: 0, y: 0 }, b: { x: 0, y: 130 }, c: { x: 420, y: 0 } });
+});
+
+test('separarCajas: al crecer una caja, la de abajo baja lo justo y empuja a las siguientes', () => {
+    const cajas = {
+        a: { x: 0, y: 0, ancho: 280, alto: 300 },   // desplegada: ahora mide 300
+        b: { x: 0, y: 60, ancho: 280, alto: 40 },
+        c: { x: 0, y: 120, ancho: 280, alto: 40 },
+        d: { x: 0, y: 500, ancho: 280, alto: 40 },  // lejos: no se toca
+    };
+    assert.deepEqual(separarCajas(cajas), { a: { x: 0, y: 0 }, b: { x: 0, y: 330 }, c: { x: 0, y: 400 }, d: { x: 0, y: 500 } });
+});
+
+test('separarCajas: varias desplegadas en la misma columna se apilan sin cruzarse', () => {
+    const cajas = { a: { x: 0, y: 0, ancho: 280, alto: 200 }, b: { x: 10, y: 50, ancho: 280, alto: 200 }, c: { x: 0, y: 100, ancho: 280, alto: 200 } };
+    const r = separarCajas(cajas);
+    assert.equal(r.b.y, 230);
+    assert.equal(r.c.y, 460);
 });

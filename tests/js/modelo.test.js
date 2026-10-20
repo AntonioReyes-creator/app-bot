@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    agregarEstado, agregarPasoEspecial, aplicarEdicion, conectarYNombrar, contenidoParaGuardar, crearConectado, eliminarEstado, enlazarPareja, fijarDestino, fijarTitulo,
+    agregarEstado, agregarPasoEspecial, aplicarEdicion, conectarYNombrar, contenidoParaGuardar, crearConectado, insertarEntre, eliminarEstado, enlazarPareja, fijarDestino, fijarTitulo,
     esNuevo, identificadorPara, moverEstado, opcionesDe, sincronizarHijos, tituloDe,
     nombreDesdeTexto, nombrePatron, plantilla, plantillaSistema, siguienteClave, sistemaDisponibles, sugerirNombre, validarNombre,
 } from '../../resources/js/flujo/modelo.js';
@@ -582,4 +582,79 @@ test('aplicarEdicion (QA H5): las palabras clave viajan en `extra` y se guardan 
     aplicarEdicion(modelo, 'start', { nombre: 'start', message: 'Hola', tipo: 'menu',
         opciones: [{ clave: '1', text: 'Precios', next_state: 'p', extra: { keywords: ['precio', 'cuánto cuesta'] } }] });
     assert.deepEqual(modelo.flujo.start.options['1'], { keywords: ['precio', 'cuánto cuesta'], text: 'Precios', next_state: 'p' });
+});
+
+// --- Insertar en medio de una conexión.
+const modeloConHorarios = () => ({
+    flujo: {
+        start: { message: 'Hola', options: { 1: { text: 'Horarios', next_state: 'horarios' }, 2: { text: 'Ver horas', next_state: 'horarios' } } },
+        horarios: { message: 'De 9 a 6', next_state: 'end' },
+        end: { message: 'Chau' },
+    },
+    layout: { start: { x: 0, y: 0 }, horarios: { x: 420, y: 0 }, end: { x: 840, y: 0 } },
+    titulos: {},
+    nuevos: [],
+});
+
+test('insertarEntre: paso en medio → origen → nuevo → el de antes', () => {
+    const modelo = modeloConHorarios();
+    const nuevo = insertarEntre(modelo, 'start', 0, 'paso');
+    assert.equal(nuevo, 'antes_de_horarios');
+    assert.equal(modelo.flujo.start.options[1].next_state, 'antes_de_horarios');
+    assert.deepEqual(modelo.flujo.antes_de_horarios, { message: '', next_state: 'horarios' });
+    assert.equal(modelo.titulos.antes_de_horarios, 'Antes de Horarios');
+    assert.equal(modelo.titulos.horarios, 'Horarios'); // conserva el nombre que tomaba de la opción
+    assert.ok(esNuevo(modelo, 'antes_de_horarios'));
+});
+
+test('insertarEntre: las otras opciones que llegaban al destino no cambian', () => {
+    const modelo = modeloConHorarios();
+    insertarEntre(modelo, 'start', 0, 'paso');
+    assert.equal(modelo.flujo.start.options[2].next_state, 'horarios');
+});
+
+test('insertarEntre: la caja nueva ocupa el lugar y lo de la derecha se corre una columna', () => {
+    const modelo = modeloConHorarios();
+    insertarEntre(modelo, 'start', 0, 'paso');
+    assert.deepEqual(modelo.layout.antes_de_horarios, { x: 420, y: 0 });
+    assert.equal(modelo.layout.horarios.x, 840);
+    assert.equal(modelo.layout.end.x, 1260);
+    assert.deepEqual(modelo.layout.start, { x: 0, y: 0 });
+});
+
+test('insertarEntre: un menú nace con la opción 1 hacia el de antes, con su nombre', () => {
+    const modelo = modeloConHorarios();
+    const nuevo = insertarEntre(modelo, 'start', 0, 'menu');
+    assert.deepEqual(modelo.flujo[nuevo].options, { 1: { text: 'Horarios', next_state: 'horarios' } });
+});
+
+test('insertarEntre: también en la salida «sigue» y antes de un paso especial', () => {
+    const modelo = modeloConHorarios();
+    const nuevo = insertarEntre(modelo, 'horarios', 0, 'paso');
+    assert.equal(modelo.flujo.horarios.next_state, nuevo);
+    assert.equal(modelo.flujo[nuevo].next_state, 'end');
+    assert.equal(modelo.titulos.end, undefined); // los especiales no reciben nombre visible
+    assert.match(modelo.titulos[nuevo], /^Antes de /);
+});
+
+test('insertarEntre: sin conexión no hace nada', () => {
+    const modelo = modeloConHorarios();
+    modelo.flujo.start.options[1].next_state = null;
+    assert.equal(insertarEntre(modelo, 'start', 0, 'paso'), null);
+    assert.equal(Object.keys(modelo.flujo).length, 3);
+});
+
+test('insertarEntre: lo que vuelve atrás (a la izquierda) no se corre', () => {
+    const modelo = modeloConHorarios();
+    modelo.flujo.horarios = { message: 'De 9 a 6', options: { 1: { text: 'Volver', next_state: 'start' } } };
+    insertarEntre(modelo, 'start', 0, 'paso');
+    assert.deepEqual(modelo.layout.start, { x: 0, y: 0 });
+});
+
+test('insertarEntre: dos veces antes del mismo paso → nombres distintos', () => {
+    const modelo = modeloConHorarios();
+    const primero = insertarEntre(modelo, 'start', 0, 'paso');
+    const segundo = insertarEntre(modelo, primero, 0, 'paso');
+    assert.equal(modelo.titulos[segundo], 'Antes de Horarios 2');
+    assert.equal(modelo.flujo[segundo].next_state, 'horarios');
 });

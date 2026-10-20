@@ -165,7 +165,10 @@ export function vaHaciaAtras(posiciones, origen, destino) {
 }
 
 
-export function flujoADrawflow(flujo, layout = {}, titulos = {}, cruzan = new Set(), { copias = false } = {}) {
+/**
+ * `plegada` (vista comprimida): función nombre → true si la caja va en una sola línea; null = vista normal.
+ */
+export function flujoADrawflow(flujo, layout = {}, titulos = {}, cruzan = new Set(), { copias = false, plegada = null } = {}) {
     const nombres = Object.keys(flujo);
     const idDe = new Map(nombres.map((nombre, i) => [nombre, String(i + 1)]));
     const posiciones = calcularPosiciones(flujo, layout);
@@ -187,10 +190,10 @@ export function flujoADrawflow(flujo, layout = {}, titulos = {}, cruzan = new Se
             id: Number(id),
             name: nombre,
             data: { nombre },
-            class: ['tipo-' + tipo, sistema ? 'es-sistema' : '', alcanzables.has(nombre) ? '' : 'sin-conexion']
+            class: ['tipo-' + tipo, sistema ? 'es-sistema' : '', alcanzables.has(nombre) ? '' : 'sin-conexion', plegada?.(nombre) ? 'plegada' : '']
                 .filter(Boolean)
                 .join(' '),
-            html: htmlCaja(nombre, estado, tipo, sistema, lista, flujo, tipos[nombre], titulos),
+            html: htmlCaja(nombre, estado, tipo, sistema, lista, flujo, tipos[nombre], titulos, plegada ? plegada(nombre) : null),
             typenode: false,
             inputs: { input_1: { connections: [] } },
             outputs: Object.fromEntries(lista.map((_, i) => ['output_' + (i + 1), { connections: [] }])),
@@ -251,7 +254,8 @@ export function flujoADrawflow(flujo, layout = {}, titulos = {}, cruzan = new Se
     };
 }
 
-function htmlCaja(nombre, estado, tipo, sistema, lista, flujo, tiposSalida = [], titulos = {}) {
+/** `plegada`: null = vista normal; true/false = vista comprimida (caja en una línea o desplegada con su viñeta). */
+function htmlCaja(nombre, estado, tipo, sistema, lista, flujo, tiposSalida = [], titulos = {}, plegada = null) {
     const visible = (id) => titulos[id] || id; // nombre visible de un estado (o su identificador)
     const candado = sistema ? '<span class="caja-candado" title="Paso especial: su nombre no cambia">&#128274;</span>' : '';
 
@@ -272,12 +276,27 @@ function htmlCaja(nombre, estado, tipo, sistema, lista, flujo, tiposSalida = [],
             + `<span class="caja-destino">${destinoHtml}</span></li>`;
     });
 
+    // Vista comprimida: viñeta para desplegar y, plegada, un resumen de lo que no se ve (las etiquetas ↩/⇢ y
+    // las opciones sin conectar viven en las filas ocultas).
+    const vineta = plegada === null ? ''
+        : `<button type="button" class="caja-plegar" data-plegar aria-expanded="${!plegada}" title="${plegada ? 'Desplegar' : 'Plegar'}">&#8250;</button>`;
+    let resumen = '';
+    if (plegada) {
+        const cuenta = (f) => lista.filter(f).length;
+        const atras = tiposSalida.filter((x) => x === 'atajo-atras').length;
+        const lejos = tiposSalida.filter((x) => x === 'atajo-cruce').length;
+        const pendientes = cuenta((s) => s.destino == null || !(s.destino in flujo));
+        const partes = [atras && `&#8617;${atras}`, lejos && `&#8674;${lejos}`, pendientes && `<span class="text-danger">&#9888;${pendientes}</span>`].filter(Boolean);
+        if (partes.length) resumen = `<span class="caja-resumen" title="↩ vuelve atrás · ⇢ va lejos · ⚠ sin conectar">${partes.join(' ')}</span>`;
+    }
+
     return `<div class="caja">`
         // Nombre visible en grande y, debajo, el identificador (lo que usa el bot). Sin nombre visible: solo el identificador.
-        + `<div class="caja-cabecera"><div class="caja-nombres${titulos[nombre] ? ' con-titulo' : ''}">`
+        + `<div class="caja-cabecera">${vineta}<div class="caja-nombres${titulos[nombre] ? ' con-titulo' : ''}">`
         + (titulos[nombre] ? `<span class="caja-titulo">${escapar(titulos[nombre])}</span>` : '')
         + `<span class="caja-nombre">${escapar(nombre)}</span></div>${candado}`
-        + (etiquetaSistema(nombre) ? `<span class="caja-etiqueta" title="Paso especial del bot">${iconoSistema(nombre)} ${etiquetaSistema(nombre)}</span>` : '')
+        + (etiquetaSistema(nombre) ? `<span class="caja-etiqueta" title="Paso especial del bot: ${etiquetaSistema(nombre)}">${iconoSistema(nombre)}<span class="caja-etiqueta-texto"> ${etiquetaSistema(nombre)}</span></span>` : '')
+        + resumen
         + `<span class="caja-tipo">${ETIQUETAS[tipo]}</span>`
         + `<button type="button" class="caja-editar" data-editar title="Editar (o doble clic)">&#9998;</button></div>`
         + `<div class="caja-mensaje">${estado.message ? escapar(estado.message) : '<span class="caja-vacio">(sin mensaje)</span>'}</div>`

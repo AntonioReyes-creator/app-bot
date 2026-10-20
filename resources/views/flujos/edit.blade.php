@@ -3,13 +3,18 @@
 @section('titulo', $flujo->nombre)
 
 @section('contenido')
-    <div class="d-flex justify-content-between align-items-center mb-2">
-        <div>
-            <h1 class="h3 mb-0">{{ $flujo->nombre }}</h1>
-            <small class="text-body-secondary">
-                <code>{{ $flujo->slug }}</code> · versión {{ $version->numero }}
-                <span class="badge text-bg-{{ $version->estado === 'publicada' ? 'success' : 'secondary' }}">{{ $version->estado }}</span>
-            </small>
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+        <div class="d-flex align-items-center gap-2">
+            {{-- Volver: flecha junto al título, lejos de Guardar. --}}
+            <a href="{{ route('flujos.index') }}" class="btn btn-outline-secondary btn-volver"
+               title="Volver a mis flujos" aria-label="Volver a mis flujos">&larr;</a>
+            <div>
+                <h1 class="h3 mb-0">{{ $flujo->nombre }}</h1>
+                <small class="text-body-secondary">
+                    <code>{{ $flujo->slug }}</code> · versión {{ $version->numero }}
+                    <span class="badge text-bg-{{ $version->estado === 'publicada' ? 'success' : 'secondary' }}">{{ $version->estado }}</span>
+                </small>
+            </div>
         </div>
         <div class="d-flex align-items-center gap-3">
             <span id="resumen" class="text-body-secondary"></span>
@@ -17,37 +22,55 @@
             <button type="button" id="diseno" class="badge diseno border-0"></button>
             <span id="sin-guardar" class="badge text-bg-warning d-none">Cambios sin guardar</span>
             <span id="guardado" class="text-success small d-none"></span>
-            <button type="button" id="guardar" class="btn btn-primary" data-url="{{ route('flujos.guardar', $flujo) }}"
-                    title="Guardar el borrador (Ctrl+S)">Guardar</button>
             <button type="button" id="exportar" class="btn btn-outline-secondary" data-url="{{ route('flujos.exportar', $flujo) }}"
                     data-archivo="{{ $flujo->slug }}.json" title="Descargar como .json">&#11015; Exportar</button>
-            <a href="{{ route('flujos.index') }}" class="btn btn-outline-secondary">Volver</a>
+            {{-- Acción principal: al final. --}}
+            <button type="button" id="guardar" class="btn btn-primary" data-url="{{ route('flujos.guardar', $flujo) }}"
+                    title="Guardar el borrador (Ctrl+S)">Guardar</button>
         </div>
     </div>
 
-    {{-- Barra de herramientas: los botones solo llevan data-*; editor.js hace el resto. --}}
-    {{-- Barra de herramientas. Los estados normales se crean desde las bolitas de cada caja. --}}
+    {{-- Barra de herramientas, de izquierda a derecha como se trabaja: recorrer (su panel se abre a la izquierda) ·
+         construir · ver el lienzo · probar (su panel se abre a la derecha). Los botones solo llevan id/data-*;
+         editor.js hace el resto. Los estados normales se crean desde las bolitas de cada caja. --}}
     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="documento-abrir"
+                title="Recorrer el flujo paso a paso (se abre a la izquierda)">&#128196; Recorrer</button>
+        <div class="vr"></div>
         <button type="button" class="btn btn-sm btn-outline-secondary" id="abrir-sistema"
                 title="Pasos que el bot ya trae listos">&#129513; Pasos especiales</button>
-        <button type="button" class="btn btn-sm btn-outline-dark" id="ordenar"
-                title="Acomodar las cajas en forma de árbol">&#8862; Ordenar</button>
+        <div class="vr"></div>
         {{-- Qué hace arrastrar el fondo: mover la vista o seleccionar cajas con un rectángulo. --}}
         <div class="btn-group btn-group-sm" role="group" aria-label="Arrastrar el fondo">
             <button type="button" class="btn btn-outline-secondary active" data-modo="mover" aria-pressed="true" title="Arrastrar el fondo mueve la vista">&#9995; Mover</button>
             <button type="button" class="btn btn-outline-secondary" data-modo="seleccionar" aria-pressed="false" title="Arrastrar el fondo selecciona cajas">&#11034; Seleccionar</button>
         </div>
+        {{-- Solo cambia la vista: cada caja en una línea, con viñeta para desplegarla (editor.js, `comprimido`). --}}
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="comprimir" aria-pressed="false">&#8661; Comprimir</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="ordenar"
+                title="Acomodar las cajas en forma de árbol">&#8862; Ordenar</button>
         <button type="button" class="btn btn-sm btn-outline-secondary" id="copias" aria-pressed="false"
                 title="Ver copias de los pasos compartidos junto a cada caja">&#10697; Copias</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" id="documento-abrir"
-                title="Recorrer el flujo paso a paso">&#128196; Documento</button>
-        <button type="button" class="btn btn-sm btn-outline-success" id="probar"
-                title="Chatear con el bot como si fueras un cliente">&#9654; Probar</button>
         <span id="aviso" class="badge text-bg-danger d-none" role="status"></span>
-        <span class="text-body-secondary small ms-auto">
-            <strong>Doble clic</strong>: editar · <kbd>Ctrl</kbd>+rueda: zoom · <kbd>Ctrl</kbd>+C/V: copiar · <kbd>Supr</kbd>: borrar
-        </span>
+        <div class="ms-auto d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="atajos" title="Atajos del teclado y del ratón">&#9000; Atajos</button>
+            <button type="button" class="btn btn-sm btn-success" id="probar"
+                    title="Chatear con el bot como si fueras un cliente (se abre a la derecha)">&#9654; Probar el bot</button>
+        </div>
     </div>
+    {{-- Contenido del botón ⌨ Atajos (popover, editor.js). --}}
+    <template id="atajos-lista">
+        <ul class="list-unstyled small mb-0">
+            <li><strong>Doble clic</strong> en una caja: editar</li>
+            <li><strong>Clic derecho</strong> en una bolita: crear o conectar</li>
+            <li><kbd>Ctrl</kbd> + rueda: zoom</li>
+            <li>Rueda apretada: mover la vista</li>
+            <li><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>Ctrl</kbd>+<kbd>V</kbd>: copiar y pegar pasos</li>
+            <li><kbd>Supr</kbd>: borrar lo seleccionado</li>
+            <li><kbd>Esc</kbd>: quitar la selección</li>
+            <li><kbd>Ctrl</kbd>+<kbd>S</kbd>: guardar</li>
+        </ul>
+    </template>
 
     {{-- El marco lleva el estilo; Drawflow va en el div interior SIN clases propias: decide si arrastrar
          el lienzo mirando solo la primera clase del elemento pulsado (debe ser "parent-drawflow").

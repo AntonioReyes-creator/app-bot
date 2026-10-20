@@ -445,6 +445,54 @@ export function crearConectado(modelo, origen, indice, nuevo) {
     return nombre;
 }
 
+/** Ancho de una columna de Ordenar: lo que se corre a la derecha al insertar un paso. */
+const COLUMNA = 420;
+
+/**
+ * Inserta un paso (o menú) nuevo EN MEDIO de una salida ya conectada: origen → nuevo → destino de antes.
+ * La caja nueva ocupa el lugar del destino; el destino y lo que cuelga de él (lo que está a su derecha) se corren
+ * una columna. Las demás salidas que llegaban al destino no cambian. El destino conserva su nombre visible
+ * (si lo tomaba del texto de la opción, se le fija para no perderlo) y la caja nueva se llama «Antes de …».
+ * Un menú nace con su opción 1 conectada al destino y con su nombre como texto.
+ * Devuelve el identificador creado, o null si la salida no estaba conectada a un paso existente.
+ */
+export function insertarEntre(modelo, origen, indice, tipo) {
+    const salida = salidas(modelo.flujo[origen])[indice];
+    const destino = salida?.destino;
+    if (destino == null || !(destino in modelo.flujo)) return null;
+
+    const textoOpcion = (salida.texto ?? '').trim();
+    const nombreDestino = modelo.titulos?.[destino] || etiquetaSistema(destino) || textoOpcion || destino;
+    if (!modelo.titulos?.[destino] && !esEstadoSistema(destino) && textoOpcion) fijarTitulo(modelo, destino, textoOpcion);
+
+    // El destino y lo que cuelga de él hacia la derecha dejan sitio (no se tocan el origen ni lo que vuelve atrás).
+    const lugar = modelo.layout[destino] ?? { x: (modelo.layout[origen]?.x ?? 0) + COLUMNA, y: modelo.layout[origen]?.y ?? 0 };
+    const correr = new Set();
+    const cola = [destino];
+    while (cola.length) {
+        const n = cola.shift();
+        const p = modelo.layout[n];
+        if (correr.has(n) || n === origen || n === 'start' || !p || p.x < lugar.x) continue;
+        correr.add(n);
+        salidas(modelo.flujo[n] ?? {}).forEach((s) => s.destino != null && cola.push(s.destino));
+    }
+    for (const n of correr) modelo.layout[n] = { ...modelo.layout[n], x: modelo.layout[n].x + COLUMNA };
+
+    const usados = new Set(Object.values(modelo.titulos ?? {}));
+    let titulo = `Antes de ${nombreDestino}`;
+    for (let n = 2; usados.has(titulo); n++) titulo = `Antes de ${nombreDestino} ${n}`;
+    const nombre = identificadorPara(modelo.flujo, titulo) || nombreLibre(modelo.flujo, `${origen}_paso`);
+    fijarTitulo(modelo, nombre, titulo);
+    (modelo.nuevos ??= []).push(nombre);
+
+    const estado = tipo === 'menu'
+        ? { message: '', options: { 1: { text: nombreDestino, next_state: destino } } }
+        : { message: '', next_state: destino };
+    agregarEstado(modelo, nombre, estado, lugar);
+    fijarDestino(modelo, origen, indice, nombre);
+    return nombre;
+}
+
 /**
  * Conecta la salida nº `indice` de `origen` con `destino` (arrastrando o desde el menú) y, si corresponde,
  * la caja destino toma el nombre de la opción: nombre visible = texto de la opción, identificador = su slug.

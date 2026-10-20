@@ -1,7 +1,7 @@
 import Drawflow from 'drawflow';
-import { Modal, Offcanvas } from 'bootstrap';
+import { Modal, Offcanvas, Popover } from 'bootstrap';
 import { calcularPosiciones, clasificar, escapar, flujoADrawflow, salidas, tiposDeDibujo, vaHaciaAtras } from './flujo/flujo-a-drawflow.js';
-import { conexionesQueCruzan } from './flujo/geometria.js';
+import { conexionesQueCruzan, separarCajas } from './flujo/geometria.js';
 import { AVANZADOS, BASICOS, PATRONES_SISTEMA, describirSistema, esEstadoSistema, etiquetaSistema, iconoSistema } from './flujo/estados-sistema.js';
 import { ordenarArbol } from './flujo/ordenar.js';
 import { iniciar, normalizar as normalizarTexto, responder } from './flujo/simulador.js';
@@ -9,7 +9,7 @@ import { TIPOS, armarDocumento, documentoEnMarkdown, fichaDePaso, resumirDocumen
 import { COMANDOS_DEL_MOTOR, estadoDelDiseno, pareceQuePideDatos } from './flujo/revision.js';
 import { EMOJIS, MAXIMO_CARACTERES, envolver, formatearWhatsApp, insertar, marcarLineas, mensajeDelBot } from './flujo/whatsapp.js';
 import {
-    agregarPasoEspecial, aplicarEdicion, copiarEstados, pegarEstados, conectarYNombrar, contenidoParaGuardar, crearConectado, eliminarEstado, enlazarPareja, fijarDestino,
+    agregarPasoEspecial, aplicarEdicion, copiarEstados, pegarEstados, conectarYNombrar, contenidoParaGuardar, crearConectado, insertarEntre, eliminarEstado, enlazarPareja, fijarDestino,
     esNuevo, identificadorPara, moverEstado, nombrePatron, sincronizarHijos, tituloDe,
     ejemploMensaje, opcionesDe, siguienteClave, sistemaDisponibles,
 } from './flujo/modelo.js';
@@ -38,6 +38,19 @@ if (contenedor) {
     // Interruptor ⧉ Copias (apagado por defecto). Es una preferencia de quien mira: se recuerda en este navegador.
     let mostrarCopias = false;
     try { mostrarCopias = localStorage.getItem('app-bot.copias') === '1'; } catch { /* sin almacenamiento: apagado */ }
+
+    // Vista ⇕ Comprimida (preferencia de quien mira, como ⧉ Copias): cada caja en una línea, en su mismo lugar, con
+    // viñeta para desplegarla. Sin copias de vista en esta vista.
+    let comprimido = false;
+    try { comprimido = localStorage.getItem('app-bot.comprimido') === '1'; } catch { /* sin almacenamiento: extendido */ }
+    const desplegadas = new Set(); // cajas abiertas con su viñeta dentro de la vista comprimida
+
+    // Lo que se ve = posiciones guardadas (modelo.layout) + lo justo para que ninguna caja pise a otra
+    // (separarCajas: al desplegar o extender, las de abajo bajan). Se recalcula en cada dibujo y NO se guarda:
+    // al volver a comprimir, regresan a su sitio.
+    let layoutVisible = null;
+    const vista = () => layoutVisible ?? modelo.layout;
+    const copiasVisibles = () => mostrarCopias && !comprimido;
     let hayCambios = false;
 
     const editor = new Drawflow(contenedor);
@@ -47,7 +60,10 @@ if (contenedor) {
     let cruzan = new Set();
 
     function pintar() {
-        const resultado = flujoADrawflow(modelo.flujo, modelo.layout, modelo.titulos, cruzan, { copias: mostrarCopias });
+        const resultado = flujoADrawflow(modelo.flujo, vista(), modelo.titulos, cruzan, {
+            copias: copiasVisibles(),
+            plegada: comprimido ? (nombre) => !desplegadas.has(nombre) : null,
+        });
         editor.import(resultado.datos);
         nombrePorId = resultado.nombrePorId;
         copiaPorId = resultado.copiaPorId;
@@ -61,7 +77,13 @@ if (contenedor) {
      */
     function dibujar() {
         cerrarMenuSalida();
+        layoutVisible = null;  // primero en su sitio, para medir el tamaño real de cada caja
         let resultado = pintar();
+        const separadas = separacionNecesaria();
+        if (separadas) {
+            layoutVisible = { ...modelo.layout, ...separadas };
+            resultado = pintar();
+        }
         const medidos = medirCruces();
         if (!mismoConjunto(medidos, cruzan)) {
             cruzan = medidos;
@@ -85,9 +107,14 @@ if (contenedor) {
     function alinearSalidas() {
         contenedor.querySelectorAll('.drawflow-node').forEach((nodo) => {
             const bolitas = nodo.querySelectorAll('.outputs .output');
-            nodo.querySelectorAll('[data-salida]').forEach((fila, i) => {
-                if (bolitas[i]) bolitas[i].style.top = `${fila.offsetTop + fila.offsetHeight / 2 - 10}px`;
-            });
+            if (nodo.classList.contains('plegada')) { // en una línea: todas salen de la cabecera (abanico)
+                const cabecera = nodo.querySelector('.caja-cabecera');
+                bolitas.forEach((b) => { b.style.top = `${cabecera.offsetTop + cabecera.offsetHeight / 2 - 10}px`; });
+            } else {
+                nodo.querySelectorAll('[data-salida]').forEach((fila, i) => {
+                    if (bolitas[i]) bolitas[i].style.top = `${fila.offsetTop + fila.offsetHeight / 2 - 10}px`;
+                });
+            }
             editor.updateConnectionNodes(nodo.id);
         });
     }
@@ -194,7 +221,7 @@ if (contenedor) {
     });
 
     editor.on('nodeMoved', (id) => {
-        const antes = JSON.stringify(tiposDeDibujo(modelo.flujo, modelo.layout, cruzan, { copias: mostrarCopias }));
+        const antes = JSON.stringify(tiposDeDibujo(modelo.flujo, vista(), cruzan, { copias: copiasVisibles() }));
         // Se lee la posición de la caja en pantalla: Drawflow guarda en sus datos (pos_x/pos_y) la posición
         // con un paso de más (resta el desplazamiento dos veces al mover), y la caja "saltaba" al reabrir.
         guardarGrupo(); // si se movía un grupo, las demás cajas también
@@ -206,9 +233,11 @@ if (contenedor) {
             moverEstado(modelo, nombrePorId.get(String(id)), parseFloat(caja.style.left), parseFloat(caja.style.top));
         }
         marcarCambios();
+        // Si la caja quedó pisando a otra, se redibuja (separarCajas la baja).
+        if (separacionNecesaria()) return dibujar();
         // Se redibuja solo si alguna conexión pasa de línea a etiqueta o al revés (así no se pierde la selección).
         const medidos = medirCruces();
-        if (JSON.stringify(tiposDeDibujo(modelo.flujo, modelo.layout, medidos, { copias: mostrarCopias })) !== antes) {
+        if (JSON.stringify(tiposDeDibujo(modelo.flujo, vista(), medidos, { copias: copiasVisibles() })) !== antes) {
             cruzan = medidos;
             dibujar();
         }
@@ -234,13 +263,13 @@ if (contenedor) {
 
         // Se miden todas las que podrían ser línea (también hacia pasos compartidos): no las que vuelven atrás ni las
         // que van a una copia de vista (⧉ Copias), que ya tienen su propio dibujo.
-        const tipos = tiposDeDibujo(modelo.flujo, modelo.layout, new Set(), { copias: mostrarCopias });
+        const tipos = tiposDeDibujo(modelo.flujo, vista(), new Set(), { copias: copiasVisibles() });
         const conexiones = [];
         for (const [nombre, nodo] of nodoDe) {
             const bolitas = nodo.querySelectorAll('.outputs .output');
             salidas(modelo.flujo[nombre]).forEach(({ destino }, i) => {
                 if (!nodoDe.has(destino) || destino === nombre || !bolitas[i]) return;
-                if (vaHaciaAtras(modelo.layout, nombre, destino) || tipos[nombre]?.[i] === 'copia') return; // ya son etiqueta o copia
+                if (vaHaciaAtras(vista(), nombre, destino) || tipos[nombre]?.[i] === 'copia') return; // ya son etiqueta o copia
                 const entrada = nodoDe.get(destino).querySelector('.inputs .input');
                 if (entrada) conexiones.push({ clave: `${nombre}#${i}`, origen: nombre, destino, p1: centro(bolitas[i]), p2: centro(entrada) });
             });
@@ -368,6 +397,15 @@ if (contenedor) {
             item('+ Nuevo final', () => crearConectado(modelo, nombre, indice, { tipo: 'final' })),
         ];
 
+        // Ya conectada: meter un paso EN MEDIO sin perder la conexión (origen → nuevo → el de antes).
+        if (salida.destino != null && salida.destino in modelo.flujo) {
+            const d = salida.destino;
+            const antesDe = modelo.titulos?.[d] || etiquetaSistema(d) || salida.texto || d;
+            partes.push(separador(), titulo(`En medio, antes de «${antesDe}»`),
+                item('⤵ Insertar paso', () => insertarEntre(modelo, nombre, indice, 'paso')),
+                item('⤵ Insertar menú', () => insertarEntre(modelo, nombre, indice, 'menu')));
+        }
+
         const sistema = sistemaDisponibles(modelo.flujo); // solo los básicos que faltan (Fin, Pasar a un asesor)
         if (sistema.length) {
             partes.push(separador(), titulo('Pasos especiales'));
@@ -456,7 +494,7 @@ if (contenedor) {
     });
 
     function irA(nombre, resaltar = true) {
-        const posicion = modelo.layout[nombre];
+        const posicion = vista()[nombre];
         const id = [...nombrePorId].find(([, n]) => n === nombre)?.[0];
         if (!posicion || !id) return;
 
@@ -472,7 +510,32 @@ if (contenedor) {
 
     // --- Ordenar: recoloca todo como árbol con la altura real de cada caja (ya dibujada) y centra en start.
     function ordenar() {
-        // alto de cada caja y altura de sus bolitas (centro), para alinear las líneas de las cadenas
+        const { alturas, puntos } = medirCajas();
+        modelo.layout = ordenarArbol(modelo.flujo, alturas, puntos);
+        dibujar();
+    }
+
+    /** Cada caja dibujada (estados y copias) con su posición y tamaño en el lienzo: { clave: { x, y, ancho, alto } }. */
+    function cajasEnPantalla() {
+        const cajas = {};
+        contenedor.querySelectorAll('.drawflow-node').forEach((nodo) => {
+            const id = nodo.id.replace('node-', '');
+            const clave = nombrePorId.get(id) ?? copiaPorId.get(id)?.clave;
+            if (!clave) return;
+            cajas[clave] = { x: parseFloat(nodo.style.left), y: parseFloat(nodo.style.top), ancho: nodo.offsetWidth, alto: nodo.offsetHeight };
+        });
+        return cajas;
+    }
+
+    /** Posiciones para que ninguna caja pise a otra, o null si ya no se pisa ninguna. */
+    function separacionNecesaria() {
+        const cajas = cajasEnPantalla();
+        const separadas = separarCajas(cajas);
+        return Object.entries(separadas).some(([clave, { y }]) => y !== cajas[clave].y) ? separadas : null;
+    }
+
+    /** Alto de cada caja dibujada y altura de sus bolitas (centro), para alinear las líneas de las cadenas. */
+    function medirCajas() {
         const alturas = {};
         const puntos = {};
         const centro = (bolita) => bolita.offsetTop + bolita.offsetHeight / 2;
@@ -487,8 +550,7 @@ if (contenedor) {
             };
         });
 
-        modelo.layout = ordenarArbol(modelo.flujo, alturas, puntos);
-        dibujar();
+        return { alturas, puntos };
     }
 
     // --- ⧉ Copias: muestra u oculta las copias de vista de los estados compartidos (solo cambia el dibujo).
@@ -504,6 +566,36 @@ if (contenedor) {
         dibujar();
     });
     pintarBotonCopias();
+
+    // --- ⌨ Atajos: la lista sale al pulsar el botón y se cierra al hacer clic en otro lado (trigger focus).
+    const botonAtajos = document.getElementById('atajos');
+    new Popover(botonAtajos, {
+        title: 'Atajos', html: true, trigger: 'focus', placement: 'bottom',
+        content: document.getElementById('atajos-lista').innerHTML,
+        allowList: { ...Popover.Default.allowList, kbd: [] },
+    });
+    botonAtajos.addEventListener('click', () => botonAtajos.focus()); // Safari no enfoca botones al pulsarlos
+
+    // --- ⇕ Comprimir / Extender: cambia solo la vista (ver `comprimido`). En comprimido no se ordena (guardaría un
+    // acomodo apretado para las cajas pequeñas) ni hay copias de vista.
+    const botonComprimir = document.getElementById('comprimir');
+    function pintarBotonComprimir() {
+        botonComprimir.textContent = comprimido ? '⇕ Extender' : '⇕ Comprimir';
+        botonComprimir.classList.toggle('active', comprimido);
+        botonComprimir.setAttribute('aria-pressed', String(comprimido));
+        botonComprimir.title = comprimido ? 'Ver las cajas completas' : 'Ver cada caja en una línea';
+        document.getElementById('ordenar').disabled = comprimido;
+        botonCopias.disabled = comprimido;
+    }
+    botonComprimir.addEventListener('click', () => {
+        comprimido = !comprimido;
+        desplegadas.clear();
+        try { localStorage.setItem('app-bot.comprimido', comprimido ? '1' : '0'); } catch { /* sin almacenamiento */ }
+        pintarBotonComprimir();
+        dibujar();
+        ajustarVista();
+    });
+    pintarBotonComprimir();
 
     document.getElementById('ordenar').addEventListener('click', () => {
         ordenar();
@@ -681,6 +773,11 @@ if (contenedor) {
 
     contenedor.addEventListener('click', (evento) => {
         if (evento.target.closest('[data-editar]')) abrirEdicion(nombreDeCaja(evento.target));
+        if (evento.target.closest('[data-plegar]')) { // viñeta de la vista comprimida: abre o pliega esa caja
+            const nombre = nombreDeCaja(evento.target);
+            if (!desplegadas.delete(nombre)) desplegadas.add(nombre);
+            dibujar();
+        }
     });
 
     function agregarFila({ clave, text, next_state, extra }) {
