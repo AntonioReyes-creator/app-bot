@@ -12,6 +12,14 @@ class FlujoTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Estas pruebas son del editor: entran como un administrador con sesión (el bloqueo se prueba en AccesoTest).
+        $this->withSession(['acceso' => ['id' => 1, 'nombre' => 'Admin de prueba']]);
+    }
+
     public function test_la_portada_redirige_a_la_lista(): void
     {
         $this->get('/')->assertRedirect('/flujos');

@@ -54,6 +54,10 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    // Solo desarrollo: entrar sin pasar por el sistema principal. Se ignora si APP_ENV no es "local"
+    // (App\Http\Middleware\RequiereAcceso).
+    'acceso_local' => (bool) env('ACCESO_LOCAL', false),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone
