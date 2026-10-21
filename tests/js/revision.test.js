@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { estadoDelDiseno, pareceQuePideDatos, pasosSinCierre, revisarFlujo } from '../../resources/js/flujo/revision.js';
+import { erroresDeEscritura, estadoDelDiseno, pareceQuePideDatos, pasosSinCierre, revisarFlujo } from '../../resources/js/flujo/revision.js';
 
 const textos = (flujo) => revisarFlujo(flujo).map((p) => `${p.gravedad} ${p.nombre}: ${p.texto}`);
 
@@ -108,3 +108,31 @@ test('estadoDelDiseno: ✅ sin avisos, ⚠ solo avisos, ⛔ si algo hace fallar 
     assert.match(falla.detalle, /y 1 más por revisar/);
 });
 
+
+test('erroresDeEscritura: «n» pegada (salto de línea sin barra), «\\n» como texto y * sin pareja', () => {
+    // Los 2 casos reales del flujo PJ.
+    assert.match(erroresDeEscritura('…ORIENTACIÓN VIRTUAL, nPor favor, responda')[0], /«nPor»/);
+    assert.match(erroresDeEscritura('9. Certificado Judicial*\nPodrá iniciar el trámite')[0], /\* sin pareja en «9\. Certificado Judicial\*»/);
+    // Barra + n escritos (no un salto): un solo aviso, no también el de la «n» pegada.
+    assert.deepEqual(erroresDeEscritura('Hola\\nAdiós').length, 1);
+    assert.match(erroresDeEscritura('Hola\\nAdiós')[0], /«\\n» escrito como texto/);
+
+    // Lo que está bien no se marca.
+    for (const bien of [
+        'Hola\nPor favor', '*Negrita* y _cursiva_', 'Información', 'Teléfono nº 5', 'Elige nuestra opción',
+        '* Horario: 8 a 5\n* Sábados *cerrado*', 'ver https://x.pe/a_b', '',
+    ]) {
+        assert.deepEqual(erroresDeEscritura(bien), [], bien);
+    }
+});
+
+test('revisarFlujo: los errores de escritura son avisos ⚠ (no fallas), en el mensaje y en las opciones', () => {
+    const f = {
+        start: { message: 'Hola, nPor favor elige', options: { 1: { text: 'Ver *estado', next_state: 'end' } } },
+        end: { message: 'Chau' },
+    };
+    const r = revisarFlujo(f).filter((p) => p.codigo === 'escritura');
+    assert.deepEqual(r.map((p) => p.gravedad), ['aviso', 'aviso']);
+    assert.match(r[0].texto, /^el mensaje tiene «nPor»/);
+    assert.match(r[1].texto, /^la opción 1 tiene un \* sin pareja/);
+});

@@ -12,6 +12,30 @@ export const COMANDOS_DEL_MOTOR = { menu: 'start', salir: 'end', exit: 'end', fi
 /** Estados sin salida en los que el motor sí sigue respondiendo: reinician (end, encuesta_fin) o esperan asesor. */
 const SIN_SALIDA_PERMITIDA = (nombre) => nombre === 'end' || nombre === 'encuesta_fin' || nombre.startsWith('esperando_agente');
 
+/**
+ * Errores de escritura que WhatsApp mostraría mal (no rompen el bot). Devuelve textos para «el mensaje …» / «la opción 1 …»:
+ * - una «n» suelta pegada a una mayúscula («, nPor favor»): un salto de línea al que se le perdió la barra (\n → n);
+ * - «\n» escrito como texto (barra + n): WhatsApp lo muestra tal cual;
+ * - una línea con un número impar de * (negrita sin cerrar, ej. «9. Certificado Judicial*»).
+ * Probado con los 7 flujos reales: solo marca los 2 casos conocidos del flujo PJ.
+ */
+export function erroresDeEscritura(texto) {
+    const errores = [];
+    const t = String(texto ?? '');
+
+    // Sin una barra delante: «\nAdiós» escrito como texto lo avisa la regla siguiente (no dos veces).
+    const pegada = t.match(/(?:^|[^\p{L}\\])(n[\p{Lu}¿¡]\p{L}*)/u);
+    if (pegada) errores.push(`tiene «${pegada[1]}», que parece un salto de línea mal escrito: cambia esa «n» por un Enter.`);
+
+    if (t.includes('\\n')) errores.push('tiene «\\n» escrito como texto: WhatsApp lo mostraría así; cámbialo por un Enter.');
+
+    // Una viñeta «* texto» al inicio de la línea no es negrita: no cuenta.
+    const linea = t.split('\n').find((l) => (l.replace(/^\s*\* /, '').match(/\*/g) ?? []).length % 2 === 1);
+    if (linea !== undefined) errores.push(`tiene un * sin pareja en «${linea.trim().slice(0, 40)}»: la negrita no se verá bien.`);
+
+    return errores;
+}
+
 /** ¿El mensaje pide que la persona escriba algo? («escríbeme…», «indícanos…», «envíanos…», «dinos…»). */
 export function pareceQuePideDatos(mensaje) {
     return /\b(escribe|escribenos|escribeme|escriba|escribir|indica|indicanos|indique|dinos|cuentanos|digita|digite|envianos|enviame|envie)\b/
@@ -121,6 +145,9 @@ export function revisarFlujo(flujo, titulo = (n) => n) {
             agregar('error', nombre, `tiene ${mensaje.length} caracteres (máximo ${MAXIMO_CARACTERES}).`);
         }
 
+        // 3a: saltos de línea mal escritos y negritas sin cerrar (se verían mal, pero no rompen el bot).
+        for (const error of erroresDeEscritura(mensaje)) agregar('aviso', nombre, `el mensaje ${error}`, 'escritura');
+
         // H13: sin opciones ni siguiente, el motor descarta todo lo que escriba la persona (l.~6240).
         if (!tieneOpciones && estado.next_state == null && !SIN_SALIDA_PERMITIDA(nombre)) {
             agregar('error', nombre, 'aquí el bot deja de responder: conéctalo a la Despedida.', 'mudo');
@@ -143,6 +170,7 @@ export function revisarFlujo(flujo, titulo = (n) => n) {
             if (clave === null) continue;
             // H10: la persona vería solo «1.».
             if (!String(texto ?? '').trim()) agregar('aviso', nombre, `la opción ${clave} no tiene texto.`);
+            for (const error of erroresDeEscritura(texto)) agregar('aviso', nombre, `la opción ${clave} ${error}`, 'escritura');
             // H12: el motor atiende antes el comando (salvo que la opción lleve al mismo sitio).
             for (const palabra of new Set([normalizar(clave), normalizar(texto)])) {
                 const va = COMANDOS_DEL_MOTOR[palabra];
