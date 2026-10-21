@@ -58,6 +58,10 @@ return [
     // (App\Http\Middleware\RequiereAcceso).
     'acceso_local' => (bool) env('ACCESO_LOCAL', false),
 
+    // Clave que comparte el proyecto existente para llamar a /api/* (Authorization: Bearer ...).
+    // Vacía = la API rechaza todo (App\Http\Middleware\RequiereApiKey).
+    'api_key' => env('API_KEY', ''),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone

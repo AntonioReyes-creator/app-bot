@@ -1,9 +1,13 @@
 <?php
 
+use App\Http\Controllers\AccesoController;
 use App\Http\Controllers\FlujoController;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/flujos');
+
+// Canjea el pase que el proyecto existente pidió por API (fuera del grupo: aquí todavía no hay sesión).
+Route::get('/entrar/{pase}', [AccesoController::class, 'entrar'])->name('acceso.entrar');
 
 // Solo administradores con sesión (entran desde el sistema principal). Ver App\Http\Middleware\RequiereAcceso.
 Route::middleware('acceso')->group(function () {

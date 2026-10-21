@@ -12,6 +12,9 @@
     <nav class="navbar navbar-dark bg-dark mb-4">
         <div class="container-fluid">
             <a class="navbar-brand" href="{{ url('/') }}">App Bot · Flujos</a>
+            @if (session('acceso.nombre'))
+                <span class="navbar-text small">👤 {{ session('acceso.nombre') }}</span>
+            @endif
         </div>
     </nav>
 
