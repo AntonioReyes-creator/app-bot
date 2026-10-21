@@ -13,6 +13,10 @@
                 <small class="text-body-secondary">
                     <code>{{ $flujo->slug }}</code> · versión {{ $version->numero }}
                     <span class="badge text-bg-{{ $version->estado === 'publicada' ? 'success' : 'secondary' }}">{{ $version->estado }}</span>
+                    {{-- Mientras se edita el borrador siguiente, qué versión tiene el bot. --}}
+                    @if ($publicada && $publicada->isNot($version))
+                        · el bot usa la <span class="badge text-bg-success">versión {{ $publicada->numero }}</span>
+                    @endif
                 </small>
             </div>
         </div>
@@ -24,6 +28,10 @@
             <span id="guardado" class="text-success small d-none"></span>
             <button type="button" id="exportar" class="btn btn-outline-secondary" data-url="{{ route('flujos.exportar', $flujo) }}"
                     data-archivo="{{ $flujo->slug }}.json" title="Descargar como .json">&#11015; Exportar</button>
+            {{-- Publicar: guarda si hace falta, revisa y deja esta versión fija para el bot (editor.js). --}}
+            <button type="button" id="publicar" class="btn btn-outline-success" data-url="{{ route('flujos.publicar', $flujo) }}"
+                    data-publicada="{{ $version->estado === 'publicada' ? '1' : '' }}"
+                    title="Dejar esta versión lista para el bot">&#128640; Publicar</button>
             {{-- Acción principal: al final. --}}
             <button type="button" id="guardar" class="btn btn-primary" data-url="{{ route('flujos.guardar', $flujo) }}"
                     title="Guardar el borrador (Ctrl+S)">Guardar</button>

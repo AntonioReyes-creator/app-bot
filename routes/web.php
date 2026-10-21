@@ -17,6 +17,7 @@ Route::middleware('acceso')->group(function () {
     Route::post('/flujos/importar', [FlujoController::class, 'importar'])->name('flujos.importar');
     Route::get('/flujos/{flujo:slug}/editar', [FlujoController::class, 'edit'])->name('flujos.edit');
     Route::put('/flujos/{flujo:slug}/borrador', [FlujoController::class, 'guardar'])->name('flujos.guardar');
+    Route::post('/flujos/{flujo:slug}/publicar', [FlujoController::class, 'publicar'])->name('flujos.publicar');
     Route::get('/flujos/{flujo:slug}/exportar', [FlujoController::class, 'exportar'])->name('flujos.exportar');
     Route::delete('/flujos/{flujo:slug}', [FlujoController::class, 'destroy'])->name('flujos.destroy');
     Route::post('/flujos/{flujo:slug}/duplicar', [FlujoController::class, 'duplicar'])->name('flujos.duplicar');

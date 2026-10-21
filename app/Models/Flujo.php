@@ -29,4 +29,14 @@ class Flujo extends Model
     {
         return $this->hasOne(FlujoVersion::class)->latestOfMany('numero');
     }
+
+    /**
+     * La última versión publicada: la que recibe el bot (GET /api/flujos/{slug}/publicado). Null si nunca se publicó.
+     *
+     * @return HasOne<FlujoVersion, $this>
+     */
+    public function ultimaPublicada(): HasOne
+    {
+        return $this->hasOne(FlujoVersion::class)->ofMany(['numero' => 'max'], fn ($q) => $q->where('estado', 'publicada'));
+    }
 }

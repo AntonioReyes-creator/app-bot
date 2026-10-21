@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Flujo;
 use App\Models\FlujoVersion;
+use App\Services\ValidadorFlujo;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -73,8 +74,47 @@ class FlujoController extends Controller
     public function edit(Flujo $flujo): View
     {
         $version = $flujo->ultimaVersion;
+        $publicada = $flujo->ultimaPublicada; // para mostrar «publicada: vN» mientras se edita el borrador siguiente
 
-        return view('flujos.edit', compact('flujo', 'version'));
+        return view('flujos.edit', compact('flujo', 'version', 'publicada'));
+    }
+
+    /**
+     * Publica la última versión (el borrador guardado): la revisa (ValidadorFlujo), vacía _editor.nuevos (desde aquí
+     * los identificadores quedan fijos: ya puede haber conversaciones en esos pasos) y la marca publicada (inmutable:
+     * el siguiente Guardar crea el borrador nº+1).
+     */
+    public function publicar(Flujo $flujo, ValidadorFlujo $validador): JsonResponse
+    {
+        $version = $flujo->ultimaVersion;
+
+        if ($version->estado === 'publicada') {
+            return response()->json(['message' => "La versión {$version->numero} ya está publicada. Haz cambios y guarda para publicar otra."], 422);
+        }
+
+        $errores = $validador->errores($version->contenido['FLUJO'] ?? []);
+        if ($errores) {
+            return response()->json([
+                'message' => count($errores) === 1 ? 'No se puede publicar: 1 falla.' : 'No se puede publicar: ' . count($errores) . ' fallas.',
+                'errores' => $errores,
+            ], 422);
+        }
+
+        // Como objetos (no arreglos): así {} no se convierte en [] al volver a guardar.
+        $contenido = json_decode((string) $version->getRawOriginal('contenido'));
+        if (isset($contenido->_editor) && is_object($contenido->_editor)) {
+            unset($contenido->_editor->nuevos);
+            if (! count((array) $contenido->_editor)) {
+                unset($contenido->_editor);
+            }
+        }
+
+        $version->update(['contenido' => $contenido, 'estado' => 'publicada', 'publicada_en' => now()]);
+
+        return response()->json([
+            'numero' => $version->numero,
+            'publicada_en' => $version->publicada_en->toIso8601String(),
+        ]);
     }
 
     /**

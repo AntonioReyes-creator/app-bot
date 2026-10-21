@@ -150,6 +150,7 @@ if (contenedor) {
             }
 
             hayCambios = false;
+            document.getElementById('publicar').dataset.publicada = ''; // guardar siempre deja un borrador (nº+1 si lo último estaba publicado)
             document.getElementById('sin-guardar').classList.add('d-none');
             const guardado = document.getElementById('guardado');
             guardado.textContent = `✓ Guardado a las ${new Date(datos.guardado_en).toLocaleTimeString()}`;
@@ -191,6 +192,51 @@ if (contenedor) {
             avisar('Exportado.', 'success');
         }
     });
+
+    // --- 🚀 Publicar: guarda si hay cambios; con fallas ⛔ no publica (las muestra); si no, confirma y publica.
+    // El servidor vuelve a revisar (ValidadorFlujo). Tras publicar se recarga: el servidor vació _editor.nuevos y
+    // modelo.nuevos (aquí) los volvería a mandar en el siguiente guardado.
+    const botonPublicar = document.getElementById('publicar');
+    botonPublicar.addEventListener('click', async () => {
+        if (hayCambios) {
+            await guardar();
+            if (hayCambios) return; // no se pudo guardar: el aviso de error ya lo dice
+        } else if (botonPublicar.dataset.publicada) {
+            avisar('Esta versión ya está publicada. Haz cambios y guarda para publicar otra.', 'secondary');
+            return;
+        }
+
+        const { avisos } = resumirDocumento(armarDocumento(modelo.flujo, modelo.titulos).secciones, modelo.flujo);
+        const fallas = avisos.filter((a) => a.gravedad === 'error').length;
+        if (fallas) {
+            avisar(`No se puede publicar: ${fallas === 1 ? '1 falla' : `${fallas} fallas`} ⛔. Clic para ver.`, 'danger', { ms: 8000, alClic: verAvisos });
+            return;
+        }
+        const pendientes = avisos.length ? `\n\nHay ${avisos.length === 1 ? '1 detalle' : `${avisos.length} detalles`} por revisar (⚠), pero no impiden publicar.` : '';
+        if (!confirm(`¿Publicar esta versión? El bot la usará en las próximas conversaciones.${pendientes}`)) return;
+
+        botonPublicar.disabled = true;
+        try {
+            const respuesta = await fetch(botonPublicar.dataset.url, {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                },
+            });
+            const datos = await respuesta.json().catch(() => ({}));
+            if (!respuesta.ok) {
+                avisar(`${datos.message ?? `No se pudo publicar: error ${respuesta.status}`}${datos.errores ? ` ${datos.errores[0]}` : ''}`, 'danger', { ms: 10000 });
+                return;
+            }
+            location.reload();
+        } catch {
+            avisar('No se pudo publicar: sin conexión.');
+        } finally {
+            botonPublicar.disabled = false;
+        }
+    });
+
     document.addEventListener('keydown', (evento) => {
         if ((evento.ctrlKey || evento.metaKey) && evento.key.toLowerCase() === 's') {
             evento.preventDefault(); // que el navegador no abra "Guardar página como"
