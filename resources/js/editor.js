@@ -19,7 +19,7 @@ import {
 const contenedor = document.getElementById('lienzo');
 
 if (contenedor) {
-    const { contenido, layout } = JSON.parse(document.getElementById('datos-flujo').textContent);
+    const { contenido, layout, huella: huellaCargada } = JSON.parse(document.getElementById('datos-flujo').textContent);
 
     // Se fijan desde el inicio las posiciones automáticas, para que las cajas no salten al añadir otras.
     const modelo = {
@@ -30,7 +30,7 @@ if (contenedor) {
             ...calcularPosiciones(contenido.FLUJO, layout ?? {}),
         },
         titulos: { ...(contenido._editor?.titulos ?? {}) }, // nombres visibles (fuera de FLUJO)
-        nuevos: [...(contenido._editor?.nuevos ?? [])],      // creados aquí y sin publicar: identificador sincronizado
+        nuevos: [...(contenido._editor?.nuevos ?? [])],      // creados aquí y sin activar el bot: identificador sincronizado
     };
     let nombrePorId = new Map();
     let copiaPorId = new Map(); // cajitas "copia de vista": no son estados (no se editan, borran ni conectan como tales)
@@ -127,8 +127,11 @@ if (contenedor) {
 
     // --- Guardar: envía el modelo tal cual (FLUJO + layout). El servidor actualiza el borrador.
     const botonGuardar = document.getElementById('guardar');
+    // Huella de lo guardado que tiene esta pestaña: si otra guardó después, el servidor responde 409 (no se pisa).
+    let huella = huellaCargada;
 
-    async function guardar() {
+    /** `forzar`: guardar aunque otra pestaña haya guardado antes (lo pide la persona tras el aviso de conflicto). */
+    async function guardar(forzar = false) {
         botonGuardar.disabled = true;
         botonGuardar.textContent = 'Guardando…';
         try {
@@ -139,9 +142,19 @@ if (contenedor) {
                     Accept: 'application/json',
                     'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
                 },
-                body: JSON.stringify({ contenido: contenidoParaGuardar(contenido, modelo), layout: modelo.layout }),
+                body: JSON.stringify({ contenido: contenidoParaGuardar(contenido, modelo), layout: modelo.layout, huella, forzar }),
             });
             const datos = await respuesta.json().catch(() => ({}));
+
+            if (respuesta.status === 409 && datos.conflicto) {
+                if (confirm(`${datos.message}\n\n¿Guardar igual? Se reemplaza lo de la otra pestaña con lo que ves aquí.\n\n`
+                    + 'Aceptar = reemplazar · Cancelar = no guardar (recarga para ver lo otro; perderás lo de aquí).')) {
+                    await guardar(true);
+                } else {
+                    avisar('No se guardó: este flujo cambió en otra pestaña. Recarga la página para ver lo guardado.', 'warning', { ms: 10000 });
+                }
+                return;
+            }
 
             if (!respuesta.ok) {
                 const detalle = datos.errors ? Object.values(datos.errors).flat()[0] : datos.message;
@@ -150,7 +163,7 @@ if (contenedor) {
             }
 
             hayCambios = false;
-            document.getElementById('publicar').dataset.publicada = ''; // guardar siempre deja un borrador (nº+1 si lo último estaba publicado)
+            huella = datos.huella;
             document.getElementById('sin-guardar').classList.add('d-none');
             const guardado = document.getElementById('guardado');
             guardado.textContent = `✓ Guardado a las ${new Date(datos.guardado_en).toLocaleTimeString()}`;
@@ -173,7 +186,7 @@ if (contenedor) {
         }
     }
 
-    botonGuardar.addEventListener('click', guardar);
+    botonGuardar.addEventListener('click', () => guardar()); // sin pasar el evento: no es "forzar"
 
     // --- ⬇ Exportar: descarga lo GUARDADO (el servidor arma el .json). Si hay cambios, se guarda antes; si no se
     // pudo guardar, no se exporta (el aviso de error ya lo dice). Se exporta aunque haya avisos, pero se dicen.
@@ -190,50 +203,6 @@ if (contenedor) {
             avisar(`Exportado · ${avisos.length === 1 ? '1 cosa' : `${avisos.length} cosas`} por revisar. Clic para ver.`, 'warning', { ms: 8000, alClic: verAvisos });
         } else {
             avisar('Exportado.', 'success');
-        }
-    });
-
-    // --- 🚀 Publicar: guarda si hay cambios; con fallas ⛔ no publica (las muestra); si no, confirma y publica.
-    // El servidor vuelve a revisar (ValidadorFlujo). Tras publicar se recarga: el servidor vació _editor.nuevos y
-    // modelo.nuevos (aquí) los volvería a mandar en el siguiente guardado.
-    const botonPublicar = document.getElementById('publicar');
-    botonPublicar.addEventListener('click', async () => {
-        if (hayCambios) {
-            await guardar();
-            if (hayCambios) return; // no se pudo guardar: el aviso de error ya lo dice
-        } else if (botonPublicar.dataset.publicada) {
-            avisar('Esta versión ya está publicada. Haz cambios y guarda para publicar otra.', 'secondary');
-            return;
-        }
-
-        const { avisos } = resumirDocumento(armarDocumento(modelo.flujo, modelo.titulos).secciones, modelo.flujo);
-        const fallas = avisos.filter((a) => a.gravedad === 'error').length;
-        if (fallas) {
-            avisar(`No se puede publicar: ${fallas === 1 ? '1 falla' : `${fallas} fallas`} ⛔. Clic para ver.`, 'danger', { ms: 8000, alClic: verAvisos });
-            return;
-        }
-        const pendientes = avisos.length ? `\n\nHay ${avisos.length === 1 ? '1 detalle' : `${avisos.length} detalles`} por revisar (⚠), pero no impiden publicar.` : '';
-        if (!confirm(`¿Publicar esta versión? El bot la usará en las próximas conversaciones.${pendientes}`)) return;
-
-        botonPublicar.disabled = true;
-        try {
-            const respuesta = await fetch(botonPublicar.dataset.url, {
-                method: 'POST',
-                headers: {
-                    Accept: 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
-                },
-            });
-            const datos = await respuesta.json().catch(() => ({}));
-            if (!respuesta.ok) {
-                avisar(`${datos.message ?? `No se pudo publicar: error ${respuesta.status}`}${datos.errores ? ` ${datos.errores[0]}` : ''}`, 'danger', { ms: 10000 });
-                return;
-            }
-            location.reload();
-        } catch {
-            avisar('No se pudo publicar: sin conexión.');
-        } finally {
-            botonPublicar.disabled = false;
         }
     });
 
@@ -859,8 +828,8 @@ if (contenedor) {
 
         const campoNombre = document.getElementById('estado-nombre');
         const campoTitulo = document.getElementById('estado-titulo');
-        // El identificador nunca se escribe a mano. En un estado nuevo (creado aquí y sin publicar) sigue al
-        // nombre visible; en los demás (importados, del sistema, ya publicados) queda fijo: el bot lo guarda en
+        // El identificador nunca se escribe a mano. En un estado nuevo (creado aquí y con el bot sin activar) sigue al
+        // nombre visible; en los demás (importados, del sistema, o de un bot activo) queda fijo: el bot lo guarda en
         // cada conversación y cambiarlo dejaría conversaciones en curso apuntando a un estado que ya no existe.
         campoNombre.value = nombre;
         campoTitulo.value = modelo.titulos[nombre] ?? '';

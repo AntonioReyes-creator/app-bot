@@ -387,7 +387,7 @@ test('contenidoParaGuardar: sin títulos no añade _editor (importado intacto); 
         'quitar todos los títulos limpia _editor');
 });
 
-// --- Estados nuevos: el identificador sigue al nombre visible hasta publicar ---
+// --- Estados nuevos: el identificador sigue al nombre visible hasta activar el bot ---
 
 test('crearConectado marca el estado como nuevo; importados y sistema no', () => {
     const modelo = conMenu();                                          // start: 1 "Trámites", 2 "Salir"

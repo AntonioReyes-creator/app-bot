@@ -13,7 +13,14 @@
         <div class="container-fluid">
             <a class="navbar-brand" href="{{ url('/') }}">App Bot · Flujos</a>
             @if (session('acceso.nombre'))
-                <span class="navbar-text small">👤 {{ session('acceso.nombre') }}</span>
+                <div class="d-flex align-items-center gap-3">
+                    <span class="navbar-text small">👤 {{ session('acceso.nombre') }}</span>
+                    {{-- POST con @csrf: un enlace o una imagen de otra página no pueden cerrar la sesión. --}}
+                    <form method="POST" action="{{ route('acceso.salir') }}" class="m-0">
+                        @csrf
+                        <button type="submit" class="btn btn-sm btn-outline-light">Salir</button>
+                    </form>
+                </div>
             @endif
         </div>
     </nav>

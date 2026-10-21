@@ -62,6 +62,37 @@ class AccesoTest extends TestCase
         $this->get('/flujos')->assertOk()->assertSessionHas('acceso.nombre', 'Desarrollo local');
     }
 
+    public function test_con_sesion_la_barra_muestra_salir(): void
+    {
+        $this->withSession(['acceso' => ['id' => 1, 'nombre' => 'Ana']])
+            ->get('/flujos')
+            ->assertSee('👤 Ana')
+            ->assertSee('action="' . route('acceso.salir') . '"', false);
+    }
+
+    public function test_salir_cierra_la_sesion(): void
+    {
+        $this->withSession(['acceso' => ['id' => 1, 'nombre' => 'Ana']])
+            ->post('/salir')
+            ->assertOk()
+            ->assertSee('Sesión cerrada')
+            ->assertSee('Para volver, entra desde el sistema principal.')
+            ->assertDontSee('👤 Ana')
+            ->assertSessionMissing('acceso');
+
+        $this->get('/flujos')->assertUnauthorized();
+    }
+
+    public function test_salir_sin_sesion_no_falla(): void
+    {
+        $this->post('/salir')->assertOk()->assertSee('Sesión cerrada');
+    }
+
+    public function test_sin_sesion_la_barra_no_muestra_salir(): void
+    {
+        $this->get('/flujos')->assertUnauthorized()->assertDontSee(route('acceso.salir'));
+    }
+
     private function crearFlujo(): Flujo
     {
         $flujo = Flujo::create(['nombre' => 'Prueba', 'slug' => 'prueba']);

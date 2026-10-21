@@ -24,7 +24,7 @@ class FlujoController extends Controller
      */
     public function index(): View
     {
-        $flujos = Flujo::withCount('versiones')->with('ultimaVersion')->latest()->get();
+        $flujos = Flujo::with('ultimaVersion')->latest()->get();
 
         return view('flujos.index', compact('flujos'));
     }
@@ -74,47 +74,54 @@ class FlujoController extends Controller
     public function edit(Flujo $flujo): View
     {
         $version = $flujo->ultimaVersion;
-        $publicada = $flujo->ultimaPublicada; // para mostrar «publicada: vN» mientras se edita el borrador siguiente
 
-        return view('flujos.edit', compact('flujo', 'version', 'publicada'));
+        return view('flujos.edit', compact('flujo', 'version'));
     }
 
     /**
-     * Publica la última versión (el borrador guardado): la revisa (ValidadorFlujo), vacía _editor.nuevos (desde aquí
-     * los identificadores quedan fijos: ya puede haber conversaciones en esos pasos) y la marca publicada (inmutable:
-     * el siguiente Guardar crea el borrador nº+1).
+     * Interruptor «Activo» de la lista. Activo = aparece para elegirlo en las aplicaciones (GET /api/bots).
+     * Activar exige que el bot no tenga fallas (ValidadorFlujo) y fija los identificadores de sus pasos (vacía
+     * _editor.nuevos): desde aquí una aplicación puede usarlo y el bot guarda el paso de cada conversación.
+     * Desactivar solo lo quita de la lista: las aplicaciones que ya lo copiaron siguen igual.
      */
-    public function publicar(Flujo $flujo, ValidadorFlujo $validador): JsonResponse
+    public function cambiarActivo(Request $request, Flujo $flujo, ValidadorFlujo $validador): RedirectResponse
     {
-        $version = $flujo->ultimaVersion;
+        $activar = $request->boolean('activo');
 
-        if ($version->estado === 'publicada') {
-            return response()->json(['message' => "La versión {$version->numero} ya está publicada. Haz cambios y guarda para publicar otra."], 422);
-        }
-
-        $errores = $validador->errores($version->contenido['FLUJO'] ?? []);
-        if ($errores) {
-            return response()->json([
-                'message' => count($errores) === 1 ? 'No se puede publicar: 1 falla.' : 'No se puede publicar: ' . count($errores) . ' fallas.',
-                'errores' => $errores,
-            ], 422);
-        }
-
-        // Como objetos (no arreglos): así {} no se convierte en [] al volver a guardar.
-        $contenido = json_decode((string) $version->getRawOriginal('contenido'));
-        if (isset($contenido->_editor) && is_object($contenido->_editor)) {
-            unset($contenido->_editor->nuevos);
-            if (! count((array) $contenido->_editor)) {
-                unset($contenido->_editor);
+        if ($activar) {
+            $version = $flujo->ultimaVersion;
+            $errores = $validador->errores($version->contenido['FLUJO'] ?? []);
+            if ($errores) {
+                return redirect()->route('flujos.index')
+                    ->with('error', "No se puede activar «{$flujo->nombre}»: " . (count($errores) === 1 ? '1 falla' : count($errores) . ' fallas') . '. Ábrelo y corrígelo.')
+                    ->with('errores', array_slice($errores, 0, 5));
             }
+            $this->fijarIdentificadores($version);
         }
 
-        $version->update(['contenido' => $contenido, 'estado' => 'publicada', 'publicada_en' => now()]);
+        $flujo->update(['activo' => $activar]);
 
-        return response()->json([
-            'numero' => $version->numero,
-            'publicada_en' => $version->publicada_en->toIso8601String(),
-        ]);
+        return redirect()->route('flujos.index')->with('estado', $activar
+            ? "«{$flujo->nombre}» activado: ya se puede elegir en las aplicaciones."
+            : "«{$flujo->nombre}» desactivado: ya no se puede elegir (las aplicaciones que lo usan siguen igual).");
+    }
+
+    /**
+     * Quita _editor.nuevos: los pasos dejan de cambiar de identificador al renombrarlos (el bot guarda ese identificador
+     * en cada conversación). Como objetos (no arreglos): así {} no se convierte en [].
+     */
+    private function fijarIdentificadores(FlujoVersion $version): void
+    {
+        $contenido = json_decode((string) $version->getRawOriginal('contenido'));
+        if (! isset($contenido->_editor->nuevos)) {
+            return;
+        }
+
+        unset($contenido->_editor->nuevos);
+        if (! count((array) $contenido->_editor)) {
+            unset($contenido->_editor);
+        }
+        $version->update(['contenido' => $contenido]);
     }
 
     /**
@@ -125,9 +132,12 @@ class FlujoController extends Controller
     {
         // Se lee el cuerpo original: los middleware TrimStrings y ConvertEmptyStringsToNull modificarían
         // los mensajes del bot (quitarían saltos de línea finales y cambiarían "" por null).
+        // Dos lecturas del mismo cuerpo: como arreglos para validar y comprobar ($crudo) y como objetos para guardar
+        // ($objeto): como arreglo, {} se vuelve [] ("options": {} quedaría "options": []).
         $crudo = json_decode($request->getContent(), true);
+        $objeto = json_decode($request->getContent());
 
-        // validate() devuelve solo los campos con reglas: se usa para comprobar, pero se guarda $crudo completo
+        // validate() devuelve solo los campos con reglas: se usa para comprobar, pero se guarda el cuerpo completo
         // (si no, se perderían las claves fuera de FLUJO, como _editor con los nombres visibles).
         Validator::make(is_array($crudo) ? $crudo : [], [
             'contenido' => ['required', 'array'],
@@ -145,21 +155,42 @@ class FlujoController extends Controller
             throw ValidationException::withMessages(['contenido.FLUJO' => 'FLUJO debe ser un objeto con los estados.']);
         }
 
+        // Bot activo: sus identificadores ya están fijos (ver cambiarActivo); los pasos creados ahora también quedan fijos.
+        if ($flujo->activo && isset($objeto->contenido->_editor->nuevos)) {
+            unset($objeto->contenido->_editor->nuevos);
+            if (! count((array) $objeto->contenido->_editor)) {
+                unset($objeto->contenido->_editor);
+            }
+        }
+
         $version = $flujo->ultimaVersion;
+
+        // Dos pestañas: el editor manda la huella de lo que cargó. Si en la base hay otra cosa, alguien guardó antes;
+        // no se pisa sin preguntar (el editor ofrece sobrescribir con "forzar").
+        if (isset($crudo['huella']) && $crudo['huella'] !== $version->huella() && empty($crudo['forzar'])) {
+            return response()->json([
+                'message' => 'Este flujo cambió en otra pestaña o ventana (se guardó o se activó).',
+                'conflicto' => true,
+            ], 409);
+        }
+
         if ($version->estado === 'publicada') {
             $version = $flujo->versiones()->make(['numero' => $version->numero + 1, 'estado' => 'borrador']);
         }
 
         $version->fill([
-            'contenido' => $crudo['contenido'],
-            'layout' => $crudo['layout'] ?? null,
+            'contenido' => $objeto->contenido,
+            'layout' => $objeto->layout ?? null,
         ]);
         // Sin cambios, save() no toca updated_at y "Guardado a las…" mostraría la hora anterior.
+        // (Laravel compara el JSON como arreglos: cambiar solo [] por {} no cuenta como cambio; se corrige al siguiente.)
         $version->exists && ! $version->isDirty() ? $version->touch() : $version->save();
+        $version = $version->fresh(); // la huella se calcula con lo que quedó en la base (igual que al abrir el editor)
 
         return response()->json([
             'numero' => $version->numero,
             'guardado_en' => $version->updated_at->toIso8601String(), // el navegador lo muestra en hora local
+            'huella' => $version->huella(),
         ]);
     }
 

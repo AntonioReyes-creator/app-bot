@@ -317,7 +317,7 @@ export function fijarTitulo(modelo, nombre, titulo) {
     else delete titulos(modelo)[nombre];
 }
 
-// --- Estados nuevos (creados en el editor y nunca publicados): su identificador sigue al nombre visible.
+// --- Estados nuevos (creados en el editor y con el bot sin activar): su identificador sigue al nombre visible.
 // Se guardan en contenido._editor.nuevos. Importados, anteriores y del sistema quedan fijos.
 // Etapa 3: Publicar debe vaciar esta lista (desde ahí el identificador queda fijo para no romper conversaciones).
 
@@ -496,7 +496,7 @@ export function insertarEntre(modelo, origen, indice, tipo) {
 /**
  * Conecta la salida nº `indice` de `origen` con `destino` (arrastrando o desde el menú) y, si corresponde,
  * la caja destino toma el nombre de la opción: nombre visible = texto de la opción, identificador = su slug.
- * Solo si el destino es nuevo (creado en el editor, sin publicar), no es del sistema y esta es la única
+ * Solo si el destino es nuevo (creado en el editor, con el bot sin activar), no es del sistema y esta es la única
  * salida que llega a él; si no, conserva su nombre (start, importados o estados compartidos no se tocan).
  * Devuelve { destino, renombrado } con el identificador final del destino.
  */

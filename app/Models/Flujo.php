@@ -7,9 +7,19 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['nombre', 'slug'])]
+#[Fillable(['nombre', 'slug', 'activo'])]
 class Flujo extends Model
 {
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'activo' => 'boolean', // aparece en la lista de bots que ven las aplicaciones (GET /api/bots)
+        ];
+    }
+
     /**
      * Versiones del flujo (borradores y publicadas), de la más antigua a la más nueva.
      *
@@ -28,15 +38,5 @@ class Flujo extends Model
     public function ultimaVersion(): HasOne
     {
         return $this->hasOne(FlujoVersion::class)->latestOfMany('numero');
-    }
-
-    /**
-     * La última versión publicada: la que recibe el bot (GET /api/flujos/{slug}/publicado). Null si nunca se publicó.
-     *
-     * @return HasOne<FlujoVersion, $this>
-     */
-    public function ultimaPublicada(): HasOne
-    {
-        return $this->hasOne(FlujoVersion::class)->ofMany(['numero' => 'max'], fn ($q) => $q->where('estado', 'publicada'));
     }
 }

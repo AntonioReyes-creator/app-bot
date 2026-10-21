@@ -57,6 +57,28 @@ class FlujoTest extends TestCase
         $this->assertStringContainsString('¡Hola! Atención 👋', $crudo);
     }
 
+    public function test_guardar_conserva_los_objetos_vacios(): void
+    {
+        $this->post('/flujos', ['nombre' => 'Vacios']);
+        $this->putJson('/flujos/vacios/borrador', [
+            'contenido' => [
+                'FLUJO' => [
+                    'start' => ['message' => 'Hola', 'next_state' => 'end', 'options' => new \stdClass],
+                    'end' => ['message' => 'Chau'],
+                ],
+                '_editor' => ['titulos' => ['start' => 'Inicio']],
+            ],
+            'layout' => ['start' => ['x' => 0, 'y' => 0], 'end' => new \stdClass],
+        ])->assertOk();
+
+        // {} se queda {} (antes se guardaba como []), en la base y al exportar.
+        $fila = DB::table('flujo_versiones')->first();
+        $this->assertStringContainsString('"options":{}', str_replace(' ', '', $fila->contenido));
+        $this->assertStringContainsString('"end":{}', str_replace(' ', '', $fila->layout));
+        $this->assertStringContainsString('"options": {}', $this->get('/flujos/vacios/exportar')->getContent());
+        $this->assertSame('Inicio', Flujo::sole()->ultimaVersion->contenido['_editor']['titulos']['start'], 'lo de fuera de FLUJO se conserva');
+    }
+
     public function test_el_flujo_nuevo_nace_con_bienvenida_y_despedida_con_mensaje(): void
     {
         $this->post('/flujos', ['nombre' => 'Nuevo']);
@@ -101,7 +123,7 @@ class FlujoTest extends TestCase
         $this->get('/flujos/poder-judicial/editar')
             ->assertOk()
             ->assertSee('id="lienzo"', false)
-            ->assertSee('versión 2')
+            ->assertSee('Inactivo') // la cabecera dice si el bot está activo (ya no muestra el número de versión)
             ->assertSee('Versi\\u00f3n dos', false); // @json escapa las tildes dentro del <script>
     }
 

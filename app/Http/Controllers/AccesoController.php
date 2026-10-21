@@ -66,4 +66,19 @@ class AccesoController extends Controller
 
         return redirect()->route('flujos.index');
     }
+
+    /**
+     * POST /salir: cierra la sesión (borra sus datos y cambia el ID y el token CSRF). Funciona aunque ya haya vencido.
+     */
+    public function salir(Request $request): Response
+    {
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        return response()->view('acceso.sin-acceso', [
+            'titulo' => 'Sesión cerrada',
+            'icono' => '👋',
+            'mensaje' => 'Para volver, entra desde el sistema principal.',
+        ]);
+    }
 }

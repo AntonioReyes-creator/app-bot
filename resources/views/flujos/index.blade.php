@@ -41,6 +41,18 @@
     @if (session('estado'))
         <div class="alert alert-success">{{ session('estado') }}</div>
     @endif
+    @if (session('error'))
+        <div class="alert alert-danger">
+            {{ session('error') }}
+            @if (session('errores'))
+                <ul class="mb-0 mt-1 small">
+                    @foreach (session('errores') as $falla)
+                        <li>{{ $falla }}</li>
+                    @endforeach
+                </ul>
+            @endif
+        </div>
+    @endif
 
     @if ($flujos->isEmpty())
         <div class="alert alert-info">Todavía no hay flujos. Crea el primero con «Nuevo flujo».</div>
@@ -50,7 +62,7 @@
                 <tr>
                     <th>Nombre</th>
                     <th>Slug</th>
-                    <th class="text-center">Versiones</th>
+                    <th class="text-center" title="Activo = se puede elegir en las aplicaciones">Activo</th>
                     <th title="¿Todos los caminos del bot terminan bien?">Diseño</th>
                     <th>Creado</th>
                     <th></th>
@@ -61,7 +73,20 @@
                     <tr>
                         <td>{{ $flujo->nombre }}</td>
                         <td><code>{{ $flujo->slug }}</code></td>
-                        <td class="text-center">{{ $flujo->versiones_count }}</td>
+                        <td class="text-center">
+                            {{-- Interruptor: al cambiarlo se envía el formulario (FlujoController@cambiarActivo). --}}
+                            <form method="POST" action="{{ route('flujos.activo', $flujo) }}" class="d-inline-block">
+                                @csrf
+                                @method('PATCH')
+                                <input type="hidden" name="activo" value="{{ $flujo->activo ? 0 : 1 }}">
+                                <div class="form-check form-switch m-0 d-inline-block">
+                                    <input class="form-check-input" type="checkbox" role="switch" @checked($flujo->activo)
+                                           onchange="this.form.submit()"
+                                           title="{{ $flujo->activo ? 'Desactivar: deja de aparecer en las aplicaciones' : 'Activar: se podrá elegir en las aplicaciones' }}"
+                                           aria-label="Activo">
+                                </div>
+                            </form>
+                        </td>
                         <td data-diseno="{{ $flujo->slug }}" data-url="{{ route('flujos.edit', $flujo) }}"><span class="text-body-secondary small">…</span></td>
                         <td>{{ $flujo->created_at->format('d/m/Y H:i') }}</td>
                         <td class="text-end text-nowrap">

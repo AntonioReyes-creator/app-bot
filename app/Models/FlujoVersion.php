@@ -40,6 +40,15 @@ class FlujoVersion extends Model
     }
 
     /**
+     * Huella de lo guardado (contenido + posiciones) tal como está en la base. El editor la recibe al abrir y la
+     * devuelve al guardar: si no coincide, otra pestaña guardó antes (FlujoController@guardar responde 409).
+     */
+    public function huella(): string
+    {
+        return md5(($this->getRawOriginal('contenido') ?? '') . '|' . ($this->getRawOriginal('layout') ?? ''));
+    }
+
+    /**
      * @return BelongsTo<Flujo, $this>
      */
     public function flujo(): BelongsTo
